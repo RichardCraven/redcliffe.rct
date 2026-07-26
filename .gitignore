@@ -1,0 +1,11 @@
+node_modules/
+.angular/
+dist/
+backend/.env
+frontend/.env
+*.csv
+.DS_Store
+output*.txt
+test_write.py
+run_shell.js
+inspect_restack.sh

@@ -1,0 +1,284 @@
+<div class="app-container animate-fade-in">
+  <!-- Top Navigation Header -->
+  <header class="main-header glass-panel">
+    <div class="brand">
+      <span class="material-icons-round brand-icon">share</span>
+      <div class="brand-text">
+        <h1 class="gradient-text">Redcliffe</h1>
+        <p>SpiceCRM Integration Engine</p>
+      </div>
+    </div>
+    
+    <div class="status-indicator">
+      <div class="status-dot" [ngClass]="{
+        'status-connected': connectionStatus === 'connected',
+        'status-checking': connectionStatus === 'checking',
+        'status-error': connectionStatus === 'error'
+      }"></div>
+      <span class="status-label">
+        <ng-container [ngSwitch]="connectionStatus">
+          <span *ngSwitchCase="'connected'">Connected to SpiceCRM</span>
+          <span *ngSwitchCase="'checking'">Verifying Connection...</span>
+          <span *ngSwitchCase="'error'">CRM Connection Error</span>
+        </ng-container>
+      </span>
+      <button *ngIf="connectionStatus === 'error'" (click)="triggerReauth()" class="btn btn-secondary btn-icon" title="Retry Authentication">
+        <span class="material-icons-round">refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Dashboard Content Grid -->
+  <main class="dashboard-grid">
+    <!-- Left Panel: CSV Import Actions -->
+    <section class="panel-import glass-panel glow-effect">
+      <div class="panel-header">
+        <span class="material-icons-round header-icon">cloud_upload</span>
+        <h2>Master Client List Import</h2>
+      </div>
+      
+      <p class="panel-description">
+        Upload the Redcliffe Master Client List CSV file here. The system will parse accounts, map standard and custom details, and populate them directly into SpiceCRM.
+      </p>
+
+      <!-- Drag & Drop Zone -->
+      <div 
+        class="drop-zone"
+        [class.dragover]="dragOver"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)"
+        (click)="fileInput.click()"
+      >
+        <input 
+          #fileInput 
+          type="file" 
+          accept=".csv" 
+          (change)="onFileSelected($event)" 
+          style="display: none;"
+        >
+        <span class="material-icons-round upload-cloud">backup</span>
+        <div class="drop-text">
+          <span class="highlight">Drag & drop CSV file</span> or click to browse
+        </div>
+        <p class="file-limits">Supports Redcliffe Master Client List.csv format</p>
+      </div>
+
+      <!-- Selected File & Import Trigger -->
+      <div *ngIf="selectedFile" class="import-actions-wrapper">
+        <div class="selected-file-panel glass-panel">
+          <div class="file-info">
+            <span class="material-icons-round file-icon">description</span>
+            <div class="file-details">
+              <span class="file-name">{{ selectedFile.name }}</span>
+              <span class="file-size">{{ (selectedFile.size / 1024) | number:'1.0-1' }} KB</span>
+            </div>
+          </div>
+        </div>
+        <button (click)="startImport()" class="btn btn-primary btn-import-block" [disabled]="isUploading">
+          <span class="material-icons-round">bolt</span>
+          <span>Begin Import</span>
+        </button>
+      </div>
+
+      <!-- Uploading/Processing State -->
+      <div *ngIf="isUploading" class="import-progress-card glass-panel">
+        <div class="progress-header">
+          <span>Processing database transactions...</span>
+          <span class="progress-percent">{{ uploadProgress }}%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" [style.width.%]="uploadProgress"></div>
+        </div>
+      </div>
+
+      <!-- Import Results Summary -->
+      <div *ngIf="importResults" class="import-results-card glass-panel">
+        <div class="results-header">
+          <span class="material-icons-round success-icon">check_circle</span>
+          <h3>Import Completed Successfully</h3>
+        </div>
+        <div class="results-stats">
+          <div class="stat-box success">
+            <span class="stat-val">{{ importResults.success }}</span>
+            <span class="stat-label">Imported</span>
+          </div>
+          <div class="stat-box failed">
+            <span class="stat-val">{{ importResults.failed }}</span>
+            <span class="stat-label">Skipped</span>
+          </div>
+          <div class="stat-box total">
+            <span class="stat-val">{{ importResults.total }}</span>
+            <span class="stat-label">Total Records</span>
+          </div>
+        </div>
+
+        <!-- Import Errors Detail -->
+        <div *ngIf="importResults.errors && importResults.errors.length > 0" class="errors-section">
+          <h4>Import Log Details ({{ importResults.errors.length }} warnings)</h4>
+          <div class="errors-list">
+            <div *ngFor="let err of importResults.errors" class="error-item">
+              <span class="error-record">{{ err.name }}:</span>
+              <span class="error-text">{{ err.error }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Panel: Recent Accounts in CRM -->
+    <section class="panel-crm-records glass-panel">
+      <div class="panel-header">
+        <div class="header-left">
+          <span class="material-icons-round header-icon">table_chart</span>
+          <h2>SpiceCRM Recent Clients</h2>
+        </div>
+        <button (click)="loadRecentAccounts()" class="btn btn-secondary btn-icon" title="Refresh client list" [disabled]="isLoadingAccounts">
+          <span class="material-icons-round" [class.spinning]="isLoadingAccounts">sync</span>
+        </button>
+      </div>
+
+      <!-- Accounts Table -->
+      <div class="table-container">
+        <div *ngIf="isLoadingAccounts && recentAccounts.length === 0" class="loading-state">
+          <div class="spinner"></div>
+          <span>Loading client database...</span>
+        </div>
+        
+        <div *ngIf="!isLoadingAccounts && recentAccounts.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon">assignment_ind</span>
+          <h3>No Client Records Found</h3>
+          <p>Import your CSV database to populate the CRM.</p>
+        </div>
+
+        <table *ngIf="recentAccounts.length > 0" class="accounts-table">
+          <thead>
+            <tr>
+              <th>Client Name</th>
+              <th>Email</th>
+              <th>Website</th>
+              <th>Location</th>
+              <th style="width: 80px; text-align: center;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let acc of recentAccounts" class="account-row">
+              <td class="cell-name">
+                <span class="material-icons-round avatar">business</span>
+                <div class="cell-text">
+                  <span class="name-text">{{ acc.name }}</span>
+                  <span class="industry-badge" *ngIf="acc.industry">{{ acc.industry }}</span>
+                </div>
+              </td>
+              <td>{{ acc.email1 || '—' }}</td>
+              <td>
+                <a *ngIf="acc.website" [href]="acc.website" target="_blank" class="web-link">
+                  <span>{{ acc.website.replace('https://', '').replace('http://', '').replace('www.', '') }}</span>
+                  <span class="material-icons-round link-icon">open_in_new</span>
+                </a>
+                <span *ngIf="!acc.website">—</span>
+              </td>
+              <td>
+                <span class="location-badge" *ngIf="acc.shipping_address_city">
+                  {{ acc.shipping_address_city }}, {{ acc.shipping_address_state || 'Canada' }}
+                </span>
+                <span *ngIf="!acc.shipping_address_city">—</span>
+              </td>
+              <td style="text-align: center;">
+                <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
+                  <span class="material-icons-round">delete</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Custom Delete Confirmation Modal -->
+  <div class="modal-backdrop" *ngIf="showDeleteModal" (click)="cancelDelete()">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <span class="material-icons-round warning-icon">warning_amber</span>
+      </div>
+      <div class="modal-body">
+        <h3>Delete Client Record</h3>
+        <p>Are you sure you want to delete <strong>{{ accountNameToDelete }}</strong> from SpiceCRM? This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" (click)="cancelDelete()">Cancel</button>
+        <button class="btn btn-danger" (click)="executeDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dev Console Drawer -->
+  <div class="dev-console-drawer" [class.open]="showDevConsole">
+    <div class="dev-console-header">
+      <div class="dev-title">
+        <span class="material-icons-round dev-terminal-icon">terminal</span>
+        <h3>Redcliffe CRM Developer Console</h3>
+      </div>
+      <div class="dev-header-actions">
+        <span class="status-badge" [class.connected]="connectionStatus === 'connected'" [class.error]="connectionStatus === 'error'">
+          {{ connectionStatus === 'connected' ? 'API Online' : 'API Offline' }}
+        </span>
+        <button class="dev-close-btn" (click)="toggleDevConsole()" title="Close Console (Shift + Space)">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+    </div>
+    <div class="dev-console-content">
+      <!-- Left Column: Terminal CLI -->
+      <div class="dev-console-col dev-cli-panel">
+        <h4>Interactive Shell Command Line</h4>
+        <div class="dev-cli-container">
+          <div class="dev-cli-output">
+            <div *ngFor="let log of consoleHistory" class="cli-line" [class]="log.type">
+              {{ log.text }}
+            </div>
+            <div *ngIf="isDeletingAll" class="cli-line dev-cli-loading-line">
+              <span class="material-icons-round spinning loader-icon">sync</span>
+              <span>Deleting records from CRM (running sequential loops)...</span>
+            </div>
+          </div>
+          <form class="dev-cli-form" (submit)="$event.preventDefault(); handleCommand(cmdInput.value); cmdInput.value = ''">
+            <span class="cli-prompt-symbol" *ngIf="!isDeletingAll">&gt;</span>
+            <span class="material-icons-round cli-spinner-symbol spinning" *ngIf="isDeletingAll">sync</span>
+            <input #devInput #cmdInput [type]="awaitingPasswordForDeleteAll ? 'password' : 'text'" [placeholder]="isDeletingAll ? 'Bulk deletion in progress...' : (awaitingPasswordForDeleteAll ? 'Enter Admin Password...' : 'Type a command (e.g. help)...')" [disabled]="isDeletingAll" class="dev-cli-input-field" autocomplete="off" spellcheck="false">
+          </form>
+        </div>
+      </div>
+      
+      <!-- Right Column: Environment details & Quick actions -->
+      <div class="dev-console-col">
+        <h4>CRM System Connection Info</h4>
+        <div class="dev-meta-list dev-console-meta">
+          <div class="dev-meta-item">
+            <span class="meta-label">CRM Host URL:</span>
+            <span class="meta-val code-text">{{ crmUrl || 'Not Connected' }}</span>
+          </div>
+          <div class="dev-meta-item">
+            <span class="meta-label">Active Session Token:</span>
+            <span class="meta-val code-text token-text" [title]="crmToken">{{ crmToken || 'No Active Session' }}</span>
+          </div>
+        </div>
+        <div class="dev-actions-grid">
+          <button class="btn btn-secondary dev-action-btn" (click)="checkStatus()">
+            <span class="material-icons-round btn-icon">sync</span>
+            Ping Status Check
+          </button>
+          <button class="btn btn-secondary dev-action-btn" (click)="triggerReauth()">
+            <span class="material-icons-round btn-icon">key</span>
+            Force Re-authenticate
+          </button>
+          <button class="btn btn-secondary dev-action-btn" (click)="loadRecentAccounts()">
+            <span class="material-icons-round btn-icon">refresh</span>
+            Refresh Client List
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

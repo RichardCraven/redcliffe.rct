@@ -1,0 +1,5 @@
+  When you first connected using the password, your SSH client saved the host's signature to your local known_hosts  
+  file, but it did not automatically copy your machine's SSH public key to the server.                               
+                                                                                                                     
+  To configure key-based authentication, you must copy your local public key ( ~/.ssh/id_rsa.pub ) to the server's   
+  list of authorized keys.  
