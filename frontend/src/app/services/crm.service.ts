@@ -32,7 +32,9 @@ export interface AccountBean {
   providedIn: 'root'
 })
 export class CrmService {
-  private apiUrl = 'http://localhost:3001/api';
+  private apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001/api'
+    : '/api';
 
   constructor(private http: HttpClient) {}
 
