@@ -86,44 +86,34 @@ graph TD
 
 ## 4. Custom Interface Application Architecture
 
-To build a modern, user-friendly UI layer between Redcliffe users and the SpiceCRM application, you can build a custom web app (e.g., using **Next.js**, **React**, or **Vite**).
-
-### Recommended Architecture
-To ensure security, performance, and reliability, structure your custom app with a decoupled architecture:
+To build a modern, user-friendly UI layer between Redcliffe users and the SpiceCRM application, we built a decoupled web application in a monorepo setup:
 
 ```mermaid
 graph TD
-    User([Redcliffe User]) -->|Interacts with| Frontend[Custom Frontend App]
-    Frontend -->|API Requests| Proxy[Secure API Proxy / Node Backend]
+    User([Redcliffe User]) -->|Interacts with| Frontend[Angular Client Dashboard]
+    Frontend -->|API Requests via Vercel Rewrite| Proxy[Express API Proxy / Node Backend]
     Proxy -->|Authenticated REST API| SpiceCRM[SpiceCRM KREST API]
     SpiceCRM -->|Reads/Writes| DB[(SpiceCRM DB)]
 ```
 
-1.  **Frontend Interface**:
-    *   A clean, tailored dashboard built using React/Next.js for quick client lookup, policy management, and document uploads.
-2.  **API Proxy Layer (Middleware)**:
-    *   Deploy a lightweight server middleware (like Next.js API routes or an Express server).
-    *   **CORS Management**: Prevents Cross-Origin Resource Sharing (CORS) blocks in the browser by routing requests from your frontend to the proxy, which then calls the SpiceCRM server.
-    *   **Security**: Stores sensitive credentials (like API user passwords and token generation secrets) securely on the server-side, rather than exposing them in the client's browser bundle.
-3.  **SpiceCRM KREST API Integration**:
-    *   Communicate with the backend using REST requests. Do **not** write directly to the database; instead, query and mutate records via the API to trigger automatic workflow rules, validation, audit logs, and data constraints.
-
-### Next Steps for Implementation
-*   **Explore API Endpoints**: Navigate to the **API Inspector** inside the SpiceCRM Workbench (`Admin > Workbench > API Inspector`) to review endpoints, filters, and custom modules dynamically.
-*   **Establish Authentication**: Set up a test script to authenticate with `/api/data/v1/login` using the regular user credentials and retrieve a session token.
+1.  **Frontend Interface (`/frontend`)**:
+    *   An Angular single-page application (SPA) client featuring a warning modal for bulk operations, a developer console (`Shift + Spacebar`), and a narrowed layout to allow more horizontal room.
+2.  **API Proxy Layer (`/backend`)**:
+    *   A lightweight Express server hosting endpoints for token state validation (`/api/status`), re-authentication (`/api/reauth`), record fetching (`/api/accounts`), single deletion (`DELETE /api/accounts/:id`), bulk deletion (`POST /api/accounts/delete-all`), and file import (`POST /api/import`).
+    *   Protects backend login credentials securely on the server-side, and manages API session tokens dynamically.
 
 ---
 
-## 5. API Testing Script (`spice_test.js`)
-A Node.js boilerplate script has been created to test the connection, authenticate, and query records from the sandbox environment.
+## 5. Production Deployment Infrastructure
 
-* **File Path**: [spice_test.js](file:///Users/richardcraven/Documents/REDCLIFFE/spice_test.js)
-* **Usage**:
-  ```bash
-  node spice_test.js
-  ```
-* **Features**:
-  * Uses Node.js native `fetch` (v18+) to run with zero external dependencies.
-  * Handles standard POST requests for token generation (`/api/data/v1/login`).
-  * Demonstrates GET requests to query the `Accounts` module with limit and field parameters.
-  * Includes alternative authentication header examples for legacy KREST implementations.
+The web application is deployed using a decoupled, production-ready architecture linked to your GitHub repository **`https://github.com/RichardCraven/redcliffe.rct`**:
+
+| Component | Provider | Live URL | Root Directory | Branch |
+| :--- | :--- | :--- | :--- | :--- |
+| **Frontend (Angular)** | Vercel CDN | *Managed by Vercel* | `frontend` | `main` |
+| **Backend (Express)** | Render Web Service | `https://redcliffe-rct.onrender.com` | `backend` | `main` |
+
+### Key Configuration Files:
+*   **[angular.json](file:///Users/richardcraven/Documents/Redcliffe/frontend/angular.json)**: Increased stylesheet size limit budget under `anyComponentStyle` (to `40kb`) to allow custom designs.
+*   **[vercel.json](file:///Users/richardcraven/Documents/Redcliffe/frontend/vercel.json)**: Manages SPA routing (rewriting URLs to `index.html`) and proxies `/api/*` endpoints to the Render backend URL `https://redcliffe-rct.onrender.com/api/*`.
+*   **[crm.service.ts](file:///Users/richardcraven/Documents/Redcliffe/frontend/src/app/services/crm.service.ts)**: Uses dynamic URL resolution to connect to `http://localhost:3001/api` during local development and the relative `/api` route (proxied by Vercel) in production.

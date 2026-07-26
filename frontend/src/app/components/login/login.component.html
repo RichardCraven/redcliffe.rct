@@ -1,0 +1,53 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="logo-section">
+      <h1>redcliffe.rct</h1>
+      <p>SpiceCRM client integration portal</p>
+    </div>
+
+    <div *ngIf="errorMessage" class="error-message">
+      {{ errorMessage }}
+    </div>
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+      <div class="form-group">
+        <label for="username">SpiceCRM Username</label>
+        <div class="input-wrapper">
+          <input
+            type="text"
+            id="username"
+            name="username"
+            class="form-input"
+            [(ngModel)]="username"
+            placeholder="Enter username"
+            required
+            autocomplete="username"
+            [disabled]="isLoading"
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="password">SpiceCRM Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="password"
+            name="password"
+            class="form-input"
+            [(ngModel)]="password"
+            placeholder="Enter password"
+            required
+            autocomplete="current-password"
+            [disabled]="isLoading"
+          />
+        </div>
+      </div>
+
+      <button type="submit" class="login-btn" [disabled]="isLoading">
+        <div *ngIf="isLoading" class="spinner"></div>
+        <span>{{ isLoading ? 'Authenticating...' : 'Sign In' }}</span>
+      </button>
+    </form>
+  </div>
+</div>

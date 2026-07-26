@@ -25,6 +25,9 @@
       <button *ngIf="connectionStatus === 'error'" (click)="triggerReauth()" class="btn btn-secondary btn-icon" title="Retry Authentication">
         <span class="material-icons-round">refresh</span>
       </button>
+      <button (click)="logout()" class="btn btn-secondary btn-icon" title="Sign Out" style="margin-left: 10px;">
+        <span class="material-icons-round">logout</span>
+      </button>
     </div>
   </header>
 

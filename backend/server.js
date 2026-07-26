@@ -51,6 +51,21 @@ async function authenticate() {
   }
 }
 
+const activeUserSessions = new Set();
+
+// Middleware to ensure the user has a valid active session
+function ensureUserSession(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+  }
+  const token = authHeader.split(' ')[1];
+  if (!activeUserSessions.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized: Session expired or invalid' });
+  }
+  next();
+}
+
 // Middleware to ensure token is valid and set
 async function ensureAuthenticated(req, res, next) {
   if (!sessionToken) {
@@ -63,8 +78,60 @@ async function ensureAuthenticated(req, res, next) {
   next();
 }
 
+// Endpoint to log in (authenticates against SpiceCRM KREST API)
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+
+  try {
+    const response = await fetch(`${spiceCrmUrl}/authentication/login`, {
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const data = await response.json();
+    
+    // Generate a secure session token
+    const token = crypto.randomBytes(32).toString('hex');
+    activeUserSessions.add(token);
+
+    res.json({ 
+      success: true, 
+      token, 
+      user: {
+        username,
+        name: data.user_name || data.display_name || username
+      } 
+    });
+  } catch (error) {
+    console.error('Login error:', error.message);
+    res.status(500).json({ error: 'Server error during login authentication' });
+  }
+});
+
+// Endpoint to log out
+app.post('/api/logout', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    activeUserSessions.delete(token);
+  }
+  res.json({ success: true });
+});
+
 // Endpoint to check connection status
-app.get('/api/status', async (req, res) => {
+app.get('/api/status', ensureUserSession, async (req, res) => {
   try {
     if (!sessionToken) {
       await authenticate();
@@ -76,7 +143,7 @@ app.get('/api/status', async (req, res) => {
 });
 
 // Endpoint to force re-authentication
-app.post('/api/reauth', async (req, res) => {
+app.post('/api/reauth', ensureUserSession, async (req, res) => {
   try {
     await authenticate();
     res.json({ status: 'success', message: 'Re-authenticated successfully' });
@@ -86,7 +153,7 @@ app.post('/api/reauth', async (req, res) => {
 });
 
 // Endpoint to fetch recent accounts from SpiceCRM
-app.get('/api/accounts', ensureAuthenticated, async (req, res) => {
+app.get('/api/accounts', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const limit = req.query.limit || 10;
   try {
     const response = await fetch(`${spiceCrmUrl}/module/Accounts?limit=${limit}&fields=id,name,email1,website,industry,description,shipping_address_city,shipping_address_state`, {
@@ -125,7 +192,7 @@ app.get('/api/accounts', ensureAuthenticated, async (req, res) => {
 });
 
 // Endpoint to delete a specific account from SpiceCRM
-app.delete('/api/accounts/:id', ensureAuthenticated, async (req, res) => {
+app.delete('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { id } = req.params;
   try {
     const response = await fetch(`${spiceCrmUrl}/module/Accounts/${id}`, {
@@ -163,7 +230,7 @@ app.delete('/api/accounts/:id', ensureAuthenticated, async (req, res) => {
 });
 
 // Endpoint to delete all accounts from SpiceCRM (requires admin password verification)
-app.post('/api/accounts/delete-all', ensureAuthenticated, async (req, res) => {
+app.post('/api/accounts/delete-all', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { password } = req.body;
 
   if (password !== process.env.SPICE_PASSWORD) {
@@ -292,7 +359,7 @@ async function createAccount(accountData) {
 }
 
 // Endpoint to upload CSV and populate in SpiceCRM
-app.post('/api/import', ensureAuthenticated, upload.single('file'), async (req, res) => {
+app.post('/api/import', ensureUserSession, ensureAuthenticated, upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }

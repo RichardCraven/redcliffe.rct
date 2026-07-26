@@ -38,29 +38,50 @@ export class CrmService {
 
   constructor(private http: HttpClient) {}
 
+  private getHeaders() {
+    const token = sessionStorage.getItem('auth_token');
+    return {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      }
+    };
+  }
+
+  login(username: string, password: string): Observable<{ success: boolean; token: string; user: { username: string; name: string } }> {
+    return this.http.post<{ success: boolean; token: string; user: { username: string; name: string } }>(`${this.apiUrl}/login`, { username, password });
+  }
+
+  logout(): Observable<{ success: boolean }> {
+    return this.http.post<{ success: boolean }>(`${this.apiUrl}/logout`, {}, this.getHeaders());
+  }
+
+  isLoggedIn(): boolean {
+    return !!sessionStorage.getItem('auth_token');
+  }
+
   getStatus(): Observable<CrmStatus> {
-    return this.http.get<CrmStatus>(`${this.apiUrl}/status`);
+    return this.http.get<CrmStatus>(`${this.apiUrl}/status`, this.getHeaders());
   }
 
   reauth(): Observable<{ status: string; message: string }> {
-    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/reauth`, {});
+    return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/reauth`, {}, this.getHeaders());
   }
 
   getRecentAccounts(limit: number = 10): Observable<{ list: AccountBean[] }> {
-    return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}`);
+    return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}`, this.getHeaders());
   }
 
   importCsv(file: File): Observable<ImportResults> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<ImportResults>(`${this.apiUrl}/import`, formData);
+    return this.http.post<ImportResults>(`${this.apiUrl}/import`, formData, this.getHeaders());
   }
 
   deleteAccount(id: string): Observable<{ success: boolean }> {
-    return this.http.delete<{ success: boolean }>(`${this.apiUrl}/accounts/${id}`);
+    return this.http.delete<{ success: boolean }>(`${this.apiUrl}/accounts/${id}`, this.getHeaders());
   }
 
   deleteAllAccounts(password: string): Observable<{ success: boolean; deleted: number; failed: number }> {
-    return this.http.post<{ success: boolean; deleted: number; failed: number }>(`${this.apiUrl}/accounts/delete-all`, { password });
+    return this.http.post<{ success: boolean; deleted: number; failed: number }>(`${this.apiUrl}/accounts/delete-all`, { password }, this.getHeaders());
   }
 }

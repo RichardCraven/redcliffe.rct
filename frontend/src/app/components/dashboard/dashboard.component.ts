@@ -1,5 +1,6 @@
 import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { CrmService, AccountBean, ImportResults } from '../../services/crm.service';
 
 @Component({
@@ -157,11 +158,24 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-  constructor(private crmService: CrmService) {}
+  constructor(private crmService: CrmService, private router: Router) {}
 
   ngOnInit() {
     this.checkStatus();
     this.loadRecentAccounts();
+  }
+
+  logout() {
+    this.crmService.logout().subscribe({
+      next: () => {
+        sessionStorage.clear();
+        this.router.navigate(['/login']);
+      },
+      error: () => {
+        sessionStorage.clear();
+        this.router.navigate(['/login']);
+      }
+    });
   }
 
   checkStatus() {
