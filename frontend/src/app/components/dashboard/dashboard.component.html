@@ -2,11 +2,15 @@
   <!-- Top Navigation Header -->
   <header class="main-header glass-panel">
     <div class="brand">
+      <button (click)="toggleAppLauncher()" class="btn-apps" title="App Launcher">
+        <span class="material-icons-round">apps</span>
+      </button>
       <span class="material-icons-round brand-icon">share</span>
       <div class="brand-text">
         <h1 class="gradient-text">Redcliffe</h1>
         <p>SpiceCRM Integration Engine</p>
       </div>
+      <span class="role-badge" [ngClass]="{'sales': currentRole === 'Sales'}">{{ currentRole }} View</span>
     </div>
     
     <div class="status-indicator">
@@ -32,9 +36,9 @@
   </header>
 
   <!-- Dashboard Content Grid -->
-  <main class="dashboard-grid">
+  <main class="dashboard-grid" [class.sales-view]="currentRole === 'Sales'">
     <!-- Left Panel: CSV Import Actions -->
-    <section class="panel-import glass-panel glow-effect">
+    <section *ngIf="currentRole === 'Admin'" class="panel-import glass-panel glow-effect">
       <div class="panel-header">
         <span class="material-icons-round header-icon">cloud_upload</span>
         <h2>Master Client List Import</h2>
@@ -161,7 +165,7 @@
               <th>Email</th>
               <th>Website</th>
               <th>Location</th>
-              <th style="width: 80px; text-align: center;">Actions</th>
+              <th *ngIf="currentRole === 'Admin'" style="width: 80px; text-align: center;">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -187,7 +191,7 @@
                 </span>
                 <span *ngIf="!acc.shipping_address_city">—</span>
               </td>
-              <td style="text-align: center;">
+              <td *ngIf="currentRole === 'Admin'" style="text-align: center;">
                 <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
                   <span class="material-icons-round">delete</span>
                 </button>
@@ -280,6 +284,86 @@
             <span class="material-icons-round btn-icon">refresh</span>
             Refresh Client List
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Launcher Modal Overlay -->
+  <div *ngIf="showAppLauncher" class="app-launcher-backdrop" (click)="toggleAppLauncher()">
+    <div class="app-launcher-modal" (click)="$event.stopPropagation()">
+      <div class="launcher-header">
+        <div class="launcher-header-left">
+          <h2>App Launcher</h2>
+          <p>Switch between roles and custom integration modules</p>
+        </div>
+        <button class="btn-launcher-close" (click)="toggleAppLauncher()" title="Close Launcher">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+
+      <div class="launcher-body animate-fade-in">
+        <!-- Search bar -->
+        <div class="launcher-search">
+          <span class="material-icons-round search-icon">search</span>
+          <input 
+            type="text" 
+            [(ngModel)]="appSearchTerm" 
+            placeholder="Search apps, roles, or configurations..." 
+            class="launcher-search-input"
+            spellcheck="false"
+          >
+        </div>
+
+        <!-- Roles Switcher -->
+        <div>
+          <h3 class="launcher-section-title">Select Active Role View</h3>
+          <div class="roles-grid">
+            <div 
+              class="role-tile" 
+              [class.active]="currentRole === 'Admin'" 
+              (click)="setRole('Admin')"
+            >
+              <div class="role-icon-box">AD</div>
+              <div class="role-tile-text">
+                <h3>Administrator</h3>
+                <p>Full database migrations, CSV importing, and records wiping.</p>
+              </div>
+            </div>
+
+            <div 
+              class="role-tile sales" 
+              [class.active]="currentRole === 'Sales'" 
+              (click)="setRole('Sales')"
+            >
+              <div class="role-icon-box">SA</div>
+              <div class="role-tile-text">
+                <h3>Sales Representative</h3>
+                <p>Read client records, query CRM database, and verify status details.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Applications Grid -->
+        <div>
+          <h3 class="launcher-section-title">Applications & Modules</h3>
+          <div class="apps-grid">
+            <div 
+              *ngFor="let app of filteredApps" 
+              class="app-card" 
+              (click)="selectApp(app.name)"
+            >
+              <div class="app-icon-wrapper" [ngClass]="'app-' + app.type">
+                <span class="material-icons-round">{{ app.icon }}</span>
+              </div>
+              <h4>{{ app.name }}</h4>
+              <p>{{ app.desc }}</p>
+            </div>
+            <div *ngIf="filteredApps.length === 0" style="grid-column: span 4; text-align: center; color: #64748b; padding: 20px 0;">
+              No matching applications found.
+            </div>
+          </div>
         </div>
       </div>
     </div>

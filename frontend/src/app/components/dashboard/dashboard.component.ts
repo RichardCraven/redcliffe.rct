@@ -1,12 +1,13 @@
 import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { CrmService, AccountBean, ImportResults } from '../../services/crm.service';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css']
 })
@@ -25,6 +26,32 @@ export class DashboardComponent implements OnInit {
   
   recentAccounts: AccountBean[] = [];
   isLoadingAccounts = false;
+
+  // App Launcher & Role State
+  showAppLauncher = false;
+  appSearchTerm = '';
+  currentRole: 'Admin' | 'Sales' = 'Admin';
+  
+  // Available Apps list
+  appsList = [
+    { name: 'Accounts', desc: 'Manage customer portfolios and details.', icon: 'corporate_fare', type: 'accounts' },
+    { name: 'Agreements', desc: 'View custom policy agreements and terms.', icon: 'workspace_premium', type: 'agreements' },
+    { name: 'Imports', desc: 'CSV database population terminal.', icon: 'cloud_upload', type: 'imports' },
+    { name: 'Reports', desc: 'Analytical summaries and metrics.', icon: 'analytics', type: 'reports' },
+    { name: 'Users', desc: 'Portal user permissions and accounts.', icon: 'manage_accounts', type: 'users' },
+    { name: 'Settings', desc: 'Configuration environment credentials.', icon: 'settings', type: 'settings' }
+  ];
+
+  get filteredApps() {
+    if (!this.appSearchTerm) {
+      return this.appsList;
+    }
+    const term = this.appSearchTerm.toLowerCase();
+    return this.appsList.filter(app => 
+      app.name.toLowerCase().includes(term) || 
+      app.desc.toLowerCase().includes(term)
+    );
+  }
 
   showDevConsole = false;
   awaitingPasswordForDeleteAll = false;
@@ -51,6 +78,39 @@ export class DashboardComponent implements OnInit {
       setTimeout(() => {
         this.devInputRef?.nativeElement?.focus();
       }, 50);
+    }
+  }
+
+  toggleAppLauncher() {
+    this.showAppLauncher = !this.showAppLauncher;
+    if (this.showAppLauncher) {
+      this.appSearchTerm = '';
+    }
+  }
+
+  setRole(role: 'Admin' | 'Sales') {
+    this.currentRole = role;
+    this.showAppLauncher = false;
+  }
+
+  selectApp(appName: string) {
+    this.showAppLauncher = false;
+    
+    if (appName === 'Accounts') {
+      const el = document.querySelector('.panel-accounts');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else if (appName === 'Imports') {
+      if (this.currentRole === 'Sales') {
+        alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
+      } else {
+        const el = document.querySelector('.panel-import');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else if (appName === 'Settings') {
+      this.showDevConsole = true;
+      setTimeout(() => this.scrollToBottom(), 50);
+    } else {
+      alert(`Navigating to mock application: "${appName}". This screen will be populated based on the ${this.currentRole} metadata definitions.`);
     }
   }
 
