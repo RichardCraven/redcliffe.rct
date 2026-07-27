@@ -28,6 +28,19 @@ export interface AccountBean {
   shipping_address_state?: string;
 }
 
+export interface MeetingBean {
+  id: string;
+  name: string;
+  date_start: string;
+  date_end: string;
+  status: string;
+  parent_id?: string;
+  parent_type?: string;
+  parent_name?: string;
+  assigned_user_name?: string;
+  assigned_user_id?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -69,6 +82,10 @@ export class CrmService {
 
   getRecentAccounts(limit: number = 10): Observable<{ list: AccountBean[] }> {
     return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}`, this.getHeaders());
+  }
+
+  getRecentMeetings(limit: number = 100): Observable<{ list: MeetingBean[] }> {
+    return this.http.get<{ list: MeetingBean[] }>(`${this.apiUrl}/meetings?limit=${limit}`, this.getHeaders());
   }
 
   importCsv(file: File): Observable<ImportResults> {

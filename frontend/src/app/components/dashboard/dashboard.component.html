@@ -134,7 +134,7 @@
     </section>
 
     <!-- Right Panel: Recent Accounts in CRM -->
-    <section class="panel-crm-records glass-panel">
+    <section *ngIf="activeView === 'accounts'" class="panel-crm-records glass-panel">
       <div class="panel-header">
         <div class="header-left">
           <span class="material-icons-round header-icon">table_chart</span>
@@ -194,6 +194,96 @@
               <td *ngIf="currentRole === 'Admin'" style="text-align: center;">
                 <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
                   <span class="material-icons-round">delete</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Right Panel: Meetings in CRM (Replicated View) -->
+    <section *ngIf="activeView === 'meetings'" class="panel-crm-records glass-panel">
+      <div class="panel-header" style="justify-content: space-between;">
+        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
+          <span class="material-icons-round header-icon" style="background: rgba(14, 165, 233, 0.15); color: #0ea5e9; box-shadow: 0 0 16px rgba(14, 165, 233, 0.2);">today</span>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">all Meetings</h2>
+          
+          <!-- Search Bar -->
+          <div class="meetings-search-box">
+            <span class="material-icons-round">search</span>
+            <input 
+              type="text" 
+              [(ngModel)]="meetingsSearchQuery" 
+              placeholder="Search Meetings..."
+              class="meetings-search-input"
+            >
+          </div>
+        </div>
+
+        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;">
+            {{ filteredMeetings.length }} of {{ meetingsList.length }} Items
+          </span>
+          <button (click)="loadRecentMeetings()" class="btn btn-secondary btn-icon" title="Refresh meetings list" [disabled]="isLoadingMeetings" style="margin-left: 8px;">
+            <span class="material-icons-round" [class.spinning]="isLoadingMeetings">sync</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Meetings Table -->
+      <div class="table-container">
+        <div *ngIf="isLoadingMeetings && meetingsList.length === 0" class="loading-state">
+          <span class="material-icons-round spinning loading-icon">sync</span>
+          <p>Fetching scheduled meetings from SpiceCRM...</p>
+        </div>
+
+        <div *ngIf="!isLoadingMeetings && meetingsList.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon">event_busy</span>
+          <h3>No Meetings Found</h3>
+          <p>No calendar meeting slots are registered in the SpiceCRM sandbox database.</p>
+        </div>
+
+        <table *ngIf="meetingsList.length > 0" class="accounts-table">
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;"><input type="checkbox"></th>
+              <th>Name</th>
+              <th>Start</th>
+              <th>Status</th>
+              <th>Related To</th>
+              <th>Assigned</th>
+              <th style="width: 40px; text-align: center;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let meeting of filteredMeetings" class="account-row">
+              <td style="text-align: center;"><input type="checkbox"></td>
+              <td class="cell-name">
+                <span class="material-icons-round avatar" style="background: rgba(14, 165, 233, 0.1); color: #0ea5e9;">today</span>
+                <span class="name-text meeting-row-name">{{ meeting.name }}</span>
+              </td>
+              <td>{{ formatMeetingTime(meeting.date_start, meeting.date_end) }}</td>
+              <td>
+                <span class="status-badge" [ngClass]="{
+                  'status-held': meeting.status === 'Held' || meeting.status === 'held',
+                  'status-planned': meeting.status === 'Planned' || meeting.status === 'planned' || meeting.status === 'planned',
+                  'status-notheld': meeting.status === 'Not Held' || meeting.status === 'notheld'
+                }">
+                  {{ meeting.status }}
+                </span>
+              </td>
+              <td>
+                <span *ngIf="meeting.parent_name" class="meeting-row-name">{{ meeting.parent_name }}</span>
+                <span *ngIf="!meeting.parent_name && meeting.parent_type" style="color: #64748b; font-size: 12px; font-weight: 500;">
+                  {{ meeting.parent_type }}
+                </span>
+                <span *ngIf="!meeting.parent_name && !meeting.parent_type">—</span>
+              </td>
+              <td>{{ meeting.assigned_user_name || 'Administrator' }}</td>
+              <td style="text-align: center;">
+                <button class="row-actions-btn" title="Actions">
+                  <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
                 </button>
               </td>
             </tr>

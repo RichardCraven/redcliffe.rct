@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { CrmService, AccountBean, ImportResults } from '../../services/crm.service';
+import { CrmService, AccountBean, MeetingBean, ImportResults } from '../../services/crm.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -27,6 +27,11 @@ export class DashboardComponent implements OnInit {
   recentAccounts: AccountBean[] = [];
   isLoadingAccounts = false;
 
+  meetingsList: MeetingBean[] = [];
+  isLoadingMeetings = false;
+  meetingsSearchQuery = '';
+  activeView: 'accounts' | 'meetings' = 'accounts';
+
   // App Launcher & Role State
   showAppLauncher = false;
   appSearchTerm = '';
@@ -35,7 +40,7 @@ export class DashboardComponent implements OnInit {
   // Available Apps list
   appsList = [
     { name: 'Accounts', desc: 'Manage customer portfolios and details.', icon: 'corporate_fare', type: 'accounts' },
-    { name: 'Agreements', desc: 'View custom policy agreements and terms.', icon: 'workspace_premium', type: 'agreements' },
+    { name: 'Meetings', desc: 'View scheduled company meetings.', icon: 'today', type: 'meetings' },
     { name: 'Imports', desc: 'CSV database population terminal.', icon: 'cloud_upload', type: 'imports' },
     { name: 'Reports', desc: 'Analytical summaries and metrics.', icon: 'analytics', type: 'reports' },
     { name: 'Users', desc: 'Portal user permissions and accounts.', icon: 'manage_accounts', type: 'users' },
@@ -97,14 +102,22 @@ export class DashboardComponent implements OnInit {
     this.showAppLauncher = false;
     
     if (appName === 'Accounts') {
+      this.activeView = 'accounts';
+      this.loadRecentAccounts();
       const el = document.querySelector('.panel-accounts');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else if (appName === 'Meetings') {
+      this.activeView = 'meetings';
+      this.loadRecentMeetings();
     } else if (appName === 'Imports') {
       if (this.currentRole === 'Sales') {
         alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
       } else {
-        const el = document.querySelector('.panel-import');
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
+        this.activeView = 'accounts';
+        setTimeout(() => {
+          const el = document.querySelector('.panel-import');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 50);
       }
     } else if (appName === 'Settings') {
       this.showDevConsole = true;
@@ -271,6 +284,80 @@ export class DashboardComponent implements OnInit {
         this.isLoadingAccounts = false;
       }
     });
+  }
+
+  loadRecentMeetings() {
+    this.isLoadingMeetings = true;
+    this.crmService.getRecentMeetings(100).subscribe({
+      next: (res) => {
+        this.meetingsList = res.list || [];
+        this.isLoadingMeetings = false;
+      },
+      error: () => {
+        this.isLoadingMeetings = false;
+      }
+    });
+  }
+
+  get filteredMeetings() {
+    if (!this.meetingsSearchQuery) {
+      return this.meetingsList;
+    }
+    const query = this.meetingsSearchQuery.toLowerCase();
+    return this.meetingsList.filter(m => 
+      (m.name && m.name.toLowerCase().includes(query)) ||
+      (m.status && m.status.toLowerCase().includes(query)) ||
+      (m.assigned_user_name && m.assigned_user_name.toLowerCase().includes(query))
+    );
+  }
+
+  formatMeetingTime(startStr: string, endStr: string): string {
+    if (!startStr) return '—';
+    try {
+      const parseDate = (str: string) => {
+        const parts = str.split(/[- :]/);
+        if (parts.length < 5) return new Date(str);
+        return new Date(
+          parseInt(parts[0]),
+          parseInt(parts[1]) - 1,
+          parseInt(parts[2]),
+          parseInt(parts[3]),
+          parseInt(parts[4]),
+          parts[5] ? parseInt(parts[5]) : 0
+        );
+      };
+
+      const startDate = parseDate(startStr);
+      const endDate = endStr ? parseDate(endStr) : null;
+      const pad = (num: number) => num.toString().padStart(2, '0');
+      
+      const formatTime = (d: Date) => {
+        let hours = d.getHours();
+        const minutes = pad(d.getMinutes());
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        return `${pad(hours)}:${minutes}${ampm}`;
+      };
+
+      const formatDate = (d: Date) => {
+        const year = d.getFullYear();
+        const month = pad(d.getMonth() + 1);
+        const day = pad(d.getDate());
+        return `${year}-${month}-${day}`;
+      };
+
+      const datePart = formatDate(startDate);
+      const startTimePart = formatTime(startDate);
+      
+      if (endDate) {
+        const endTimePart = formatTime(endDate);
+        return `${datePart} ${startTimePart} - ${endTimePart}`;
+      }
+      return `${datePart} ${startTimePart}`;
+    } catch (e) {
+      return `${startStr} - ${endStr}`;
+    }
   }
 
   onDragOver(event: DragEvent) {
