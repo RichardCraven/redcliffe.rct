@@ -1,6 +1,20 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
+import { Observable, Subject, throwError } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+
+export const sessionInterceptor: HttpInterceptorFn = (req, next) => {
+  const crmService = inject(CrmService);
+  return next(req).pipe(
+    catchError((error: HttpErrorResponse) => {
+      // If unauthorized (401), and not the login endpoint
+      if (error.status === 401 && !req.url.includes('/api/login')) {
+        crmService.sessionTimeout$.next();
+      }
+      return throwError(() => error);
+    })
+  );
+};
 
 export interface CrmStatus {
   status: string;
@@ -67,6 +81,7 @@ export interface ReportBean {
   providedIn: 'root'
 })
 export class CrmService {
+  public sessionTimeout$ = new Subject<void>();
   private apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3001/api'
     : '/api';

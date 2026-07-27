@@ -282,6 +282,11 @@ export class DashboardComponent implements OnInit {
     this.checkStatus();
     this.loadRecentAccounts();
     this.loadUserProfile();
+
+    // Listen for session invalidation/timeouts
+    this.crmService.sessionTimeout$.subscribe(() => {
+      this.showSessionTimeoutModal = true;
+    });
   }
 
   logout() {
@@ -796,5 +801,12 @@ export class DashboardComponent implements OnInit {
         }, 20);
       }
     });
+  }
+
+  showSessionTimeoutModal = false;
+
+  handleSessionTimeoutClose() {
+    this.showSessionTimeoutModal = false;
+    this.logout();
   }
 }
