@@ -310,8 +310,12 @@
             <tr *ngFor="let meeting of filteredMeetings" class="account-row">
               <td style="text-align: center;"><input type="checkbox"></td>
               <td class="cell-name">
-                <span class="material-icons-round avatar" style="background: rgba(14, 165, 233, 0.1); color: #0ea5e9;">today</span>
+                <span class="material-icons-round avatar" [style.background]="meeting.isOutlook ? 'rgba(37, 99, 235, 0.1)' : 'rgba(14, 165, 233, 0.1)'" [style.color]="meeting.isOutlook ? '#2563eb' : '#0ea5e9'">{{ meeting.isOutlook ? 'calendar_month' : 'today' }}</span>
                 <span class="name-text meeting-row-name">{{ meeting.name }}</span>
+                <span *ngIf="meeting.isOutlook" style="background: rgba(37, 99, 235, 0.12); color: #2563eb; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px;">
+                  <span style="width: 6px; height: 6px; border-radius: 50%; background: #2563eb; display: inline-block;"></span>
+                  Outlook
+                </span>
               </td>
               <td>{{ formatMeetingTime(meeting.date_start, meeting.date_end) }}</td>
               <td>
@@ -342,7 +346,7 @@
                     <span class="material-icons-round">info</span>
                     Details
                   </button>
-                  <button (click)="deleteMeeting(meeting)" class="menu-item delete-item">
+                  <button *ngIf="!meeting.isOutlook" (click)="deleteMeeting(meeting)" class="menu-item delete-item">
                     <span class="material-icons-round">delete</span>
                     Delete
                   </button>

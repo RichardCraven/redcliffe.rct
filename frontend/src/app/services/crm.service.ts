@@ -53,6 +53,7 @@ export interface MeetingBean {
   parent_name?: string;
   assigned_user_name?: string;
   assigned_user_id?: string;
+  isOutlook?: boolean;
 }
 
 export interface UserBean {
@@ -177,5 +178,13 @@ export class CrmService {
 
   saveOutlookTokens(userId: string, tokens: any): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/users/${userId}/outlook-tokens`, { tokens }, this.getHeaders());
+  }
+
+  getOutlookEvents(userId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/outlook/events?userId=${userId}`, this.getHeaders());
+  }
+
+  createOutlookEvent(userId: string, eventData: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/outlook/events`, { userId, eventData }, this.getHeaders());
   }
 }

@@ -343,13 +343,62 @@ export class DashboardComponent implements OnInit {
     this.isLoadingMeetings = true;
     this.crmService.getRecentMeetings(100).subscribe({
       next: (res) => {
-        this.meetingsList = res.list || [];
-        this.isLoadingMeetings = false;
+        const crmMeetings = res.list || [];
+        
+        if (this.isOutlookConnected && this.currentUserProfile) {
+          this.crmService.getOutlookEvents(this.currentUserProfile.id).subscribe({
+            next: (outlookEvents: any[]) => {
+              const mappedOutlookMeetings = outlookEvents.map((evt: any) => {
+                const startStr = evt.start?.dateTime ? this.formatIsoToCrmDate(evt.start.dateTime) : '';
+                const endStr = evt.end?.dateTime ? this.formatIsoToCrmDate(evt.end.dateTime) : '';
+                
+                return {
+                  id: evt.id,
+                  name: evt.subject || 'No Subject',
+                  date_start: startStr,
+                  date_end: endStr,
+                  status: 'Planned',
+                  parent_name: evt.location?.displayName || 'Outlook Calendar',
+                  parent_type: 'Outlook',
+                  assigned_user_name: evt.organizer?.emailAddress?.name || 'Outlook User',
+                  isOutlook: true
+                };
+              });
+
+              // Merge lists and sort descending (newest start dates first)
+              this.meetingsList = [...crmMeetings, ...mappedOutlookMeetings].sort((a, b) => {
+                const dateA = new Date(a.date_start.replace(' ', 'T')).getTime() || 0;
+                const dateB = new Date(b.date_start.replace(' ', 'T')).getTime() || 0;
+                return dateB - dateA;
+              });
+              this.isLoadingMeetings = false;
+            },
+            error: (err) => {
+              console.error('Failed to load Outlook events:', err);
+              this.meetingsList = crmMeetings;
+              this.isLoadingMeetings = false;
+            }
+          });
+        } else {
+          this.meetingsList = crmMeetings;
+          this.isLoadingMeetings = false;
+        }
       },
       error: () => {
         this.isLoadingMeetings = false;
       }
     });
+  }
+
+  formatIsoToCrmDate(isoStr: string): string {
+    if (!isoStr) return '';
+    try {
+      const d = new Date(isoStr);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch {
+      return '';
+    }
   }
 
   get filteredMeetings() {

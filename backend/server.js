@@ -889,7 +889,139 @@ app.post('/api/users/:id/outlook-tokens', ensureUserSession, ensureAuthenticated
     });
     const data = await updateRes.json();
     res.json(data);
+// Helper to get active access token, refreshing if expired
+async function getOutlookAccessToken(userId) {
+  const userRes = await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
+    headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+  });
+  if (!userRes.ok) throw new Error('User not found in CRM');
+  const userData = await userRes.json();
+  const description = userData.description || '';
+  const match = description.match(/\[OUTLOOK_TOKENS\]:\s*(\{.*\})/);
+  if (!match) return null;
+
+  const tokens = JSON.parse(match[1]);
+  
+  // Microsoft access tokens generally expire in 1 hour (3600 seconds)
+  // We check if expired (we also allow 5 minutes clock-skew leeway)
+  const isExpired = !tokens.expires_at || (Date.now() > tokens.expires_at - 300000);
+  if (!isExpired) {
+    return tokens.access_token;
+  }
+
+  // Refresh the token
+  if (!tokens.refresh_token) {
+    throw new Error('No refresh token available');
+  }
+
+  const clientId = process.env.MS_CLIENT_ID;
+  const clientSecret = process.env.MS_CLIENT_SECRET;
+  const tenantId = process.env.MS_TENANT_ID || 'common';
+
+  const refreshResponse = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: tokens.refresh_token,
+      grant_type: 'refresh_token'
+    })
+  });
+
+  const refreshData = await refreshResponse.json();
+  if (!refreshResponse.ok) {
+    throw new Error(refreshData.error_description || 'Token refresh failed');
+  }
+
+  const newTokens = {
+    access_token: refreshData.access_token,
+    refresh_token: refreshData.refresh_token || tokens.refresh_token,
+    expires_at: Date.now() + (refreshData.expires_in * 1000)
+  };
+
+  // Save back to user description
+  const tokenString = `[OUTLOOK_TOKENS]: ${JSON.stringify(newTokens)}`;
+  let newDescription = description;
+  if (newDescription.includes('[OUTLOOK_TOKENS]')) {
+    newDescription = newDescription.replace(/\[OUTLOOK_TOKENS\]:\s*(\{.*\}|null)/, tokenString);
+  } else {
+    newDescription = (newDescription + '\n\n' + tokenString).trim();
+  }
+
+  await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
+    method: 'POST',
+    headers: {
+      'OAuth-Token': sessionToken,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({ description: newDescription })
+  });
+
+  return newTokens.access_token;
+}
+
+// 5. Get Outlook Calendar Events
+app.get('/api/outlook/events', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'userId query parameter is required' });
+
+  try {
+    const accessToken = await getOutlookAccessToken(userId);
+    if (!accessToken) {
+      return res.json([]); // User has not linked Outlook, return empty list
+    }
+
+    const graphRes = await fetch('https://graph.microsoft.com/v1.0/me/calendar/events?$top=50&$orderby=start/dateTime asc', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Prefer': 'outlook.timezone="Pacific Standard Time"'
+      }
+    });
+
+    const data = await graphRes.json();
+    if (!graphRes.ok) {
+      throw new Error(data.error?.message || 'Failed to fetch Outlook events');
+    }
+
+    res.json(data.value || []);
   } catch (error) {
+    console.error('Failed to retrieve Outlook events:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Create Outlook Calendar Event
+app.post('/api/outlook/events', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { userId, eventData } = req.body;
+  if (!userId || !eventData) {
+    return res.status(400).json({ error: 'userId and eventData are required' });
+  }
+
+  try {
+    const accessToken = await getOutlookAccessToken(userId);
+    if (!accessToken) {
+      return res.status(400).json({ error: 'Outlook calendar sync is not connected for this user.' });
+    }
+
+    const graphRes = await fetch('https://graph.microsoft.com/v1.0/me/calendar/events', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(eventData)
+    });
+
+    const data = await graphRes.json();
+    if (!graphRes.ok) {
+      throw new Error(data.error?.message || 'Failed to create Outlook event');
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to create Outlook event:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
