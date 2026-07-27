@@ -12,6 +12,28 @@
       </div>
       <span class="role-badge" [ngClass]="{'sales': currentRole === 'Sales'}">{{ currentRole }} View</span>
     </div>
+
+    <!-- Header Navigation Buttons -->
+    <div class="header-nav" style="display: flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 24px;">
+      <button 
+        (click)="selectApp('Accounts')" 
+        class="btn-nav-icon" 
+        [class.active]="activeView === 'accounts'" 
+        title="Client List"
+      >
+        <span class="material-icons-round">corporate_fare</span>
+        <span class="btn-nav-text">Client List</span>
+      </button>
+      <button 
+        (click)="selectApp('Meetings')" 
+        class="btn-nav-icon" 
+        [class.active]="activeView === 'meetings'" 
+        title="Meetings"
+      >
+        <span class="material-icons-round">today</span>
+        <span class="btn-nav-text">Meetings</span>
+      </button>
+    </div>
     
     <div class="status-indicator">
       <div class="status-dot" [ngClass]="{
