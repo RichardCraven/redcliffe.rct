@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { CrmService, AccountBean, MeetingBean, ImportResults } from '../../services/crm.service';
+import { CrmService, AccountBean, MeetingBean, UserBean, ImportResults } from '../../services/crm.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -30,7 +30,12 @@ export class DashboardComponent implements OnInit {
   meetingsList: MeetingBean[] = [];
   isLoadingMeetings = false;
   meetingsSearchQuery = '';
-  activeView: 'accounts' | 'meetings' = 'accounts';
+
+  usersList: UserBean[] = [];
+  isLoadingUsers = false;
+  usersSearchQuery = '';
+
+  activeView: 'accounts' | 'meetings' | 'users' = 'accounts';
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -109,6 +114,9 @@ export class DashboardComponent implements OnInit {
     } else if (appName === 'Meetings') {
       this.activeView = 'meetings';
       this.loadRecentMeetings();
+    } else if (appName === 'Users') {
+      this.activeView = 'users';
+      this.loadRecentUsers();
     } else if (appName === 'Imports') {
       if (this.currentRole === 'Sales') {
         alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
@@ -358,6 +366,35 @@ export class DashboardComponent implements OnInit {
     } catch (e) {
       return `${startStr} - ${endStr}`;
     }
+  }
+
+  loadRecentUsers() {
+    this.isLoadingUsers = true;
+    this.crmService.getRecentUsers(100).subscribe({
+      next: (res) => {
+        this.usersList = res.list || [];
+        this.isLoadingUsers = false;
+      },
+      error: () => {
+        this.isLoadingUsers = false;
+      }
+    });
+  }
+
+  get filteredUsers() {
+    if (!this.usersSearchQuery) {
+      return this.usersList;
+    }
+    const query = this.usersSearchQuery.toLowerCase();
+    return this.usersList.filter(u => 
+      (u.user_name && u.user_name.toLowerCase().includes(query)) ||
+      (u.status && u.status.toLowerCase().includes(query)) ||
+      ((u.first_name || u.last_name) && `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase().includes(query))
+    );
+  }
+
+  checkBool(val: any): boolean {
+    return val === true || val === 1 || val === '1' || val === 'true' || val === 'yes' || val === 'Checked' || val === 'checked';
   }
 
   onDragOver(event: DragEvent) {

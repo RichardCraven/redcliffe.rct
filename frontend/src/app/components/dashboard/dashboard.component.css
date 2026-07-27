@@ -1456,3 +1456,16 @@
 
 .app-meetings { background: #0284c7; }
 
+/* Custom Checkbox Display in Tables */
+.checkbox-display {
+  color: #475569;
+  cursor: default;
+  user-select: none;
+  font-size: 22px;
+  vertical-align: middle;
+}
+
+.checkbox-display.checked {
+  color: #ec4899;
+}
+

@@ -229,6 +229,44 @@ app.get('/api/meetings', ensureUserSession, ensureAuthenticated, async (req, res
   }
 });
 
+// Endpoint to fetch users from SpiceCRM
+app.get('/api/users', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const limit = req.query.limit || 100;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Users?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Users?limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching users:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to delete a specific account from SpiceCRM
 app.delete('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { id } = req.params;

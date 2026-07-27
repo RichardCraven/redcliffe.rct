@@ -41,6 +41,19 @@ export interface MeetingBean {
   assigned_user_id?: string;
 }
 
+export interface UserBean {
+  id: string;
+  user_name: string;
+  first_name?: string;
+  last_name?: string;
+  status: string;
+  is_admin: any;
+  portal_only?: any;
+  is_api_user?: any;
+  external_auth_only?: any;
+  email1?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -86,6 +99,10 @@ export class CrmService {
 
   getRecentMeetings(limit: number = 100): Observable<{ list: MeetingBean[] }> {
     return this.http.get<{ list: MeetingBean[] }>(`${this.apiUrl}/meetings?limit=${limit}`, this.getHeaders());
+  }
+
+  getRecentUsers(limit: number = 100): Observable<{ list: UserBean[] }> {
+    return this.http.get<{ list: UserBean[] }>(`${this.apiUrl}/users?limit=${limit}`, this.getHeaders());
   }
 
   importCsv(file: File): Observable<ImportResults> {
