@@ -26,6 +26,7 @@ export class DashboardComponent implements OnInit {
   
   recentAccounts: AccountBean[] = [];
   isLoadingAccounts = false;
+  accountsSearchQuery = '';
 
   meetingsList: MeetingBean[] = [];
   isLoadingMeetings = false;
@@ -402,6 +403,21 @@ export class DashboardComponent implements OnInit {
     } catch {
       return '';
     }
+  }
+
+  get filteredAccounts() {
+    if (!this.accountsSearchQuery) {
+      return this.recentAccounts;
+    }
+    const query = this.accountsSearchQuery.toLowerCase();
+    return this.recentAccounts.filter(acc => 
+      (acc.name && acc.name.toLowerCase().includes(query)) ||
+      (acc.email1 && acc.email1.toLowerCase().includes(query)) ||
+      (acc.website && acc.website.toLowerCase().includes(query)) ||
+      (acc.shipping_address_city && acc.shipping_address_city.toLowerCase().includes(query)) ||
+      (acc.shipping_address_state && acc.shipping_address_state.toLowerCase().includes(query)) ||
+      (acc.industry && acc.industry.toLowerCase().includes(query))
+    );
   }
 
   get filteredMeetings() {

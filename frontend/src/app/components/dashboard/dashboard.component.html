@@ -185,14 +185,31 @@
 
     <!-- Right Panel: Recent Accounts in CRM -->
     <section *ngIf="activeView === 'accounts'" class="panel-crm-records glass-panel">
-      <div class="panel-header">
-        <div class="header-left">
+      <div class="panel-header" style="justify-content: space-between;">
+        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
           <span class="material-icons-round header-icon">table_chart</span>
-          <h2>SpiceCRM Recent Clients</h2>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">SpiceCRM Recent Clients</h2>
+          
+          <!-- Search Bar -->
+          <div class="meetings-search-box">
+            <span class="material-icons-round">search</span>
+            <input 
+              type="text" 
+              [(ngModel)]="accountsSearchQuery" 
+              placeholder="Search clients..."
+              class="meetings-search-input"
+            >
+          </div>
         </div>
-        <button (click)="loadRecentAccounts()" class="btn btn-secondary btn-icon" title="Refresh client list" [disabled]="isLoadingAccounts">
-          <span class="material-icons-round" [class.spinning]="isLoadingAccounts">sync</span>
-        </button>
+        
+        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;" *ngIf="recentAccounts.length > 0">
+            {{ filteredAccounts.length }} of {{ recentAccounts.length }} Items
+          </span>
+          <button (click)="loadRecentAccounts()" class="btn btn-secondary btn-icon" title="Refresh client list" [disabled]="isLoadingAccounts" style="margin-left: 8px;">
+            <span class="material-icons-round" [class.spinning]="isLoadingAccounts">sync</span>
+          </button>
+        </div>
       </div>
 
       <!-- Accounts Table -->
@@ -208,7 +225,13 @@
           <p>Import your CSV database to populate the CRM.</p>
         </div>
 
-        <table *ngIf="recentAccounts.length > 0" class="accounts-table">
+        <div *ngIf="!isLoadingAccounts && recentAccounts.length > 0 && filteredAccounts.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon">search_off</span>
+          <h3>No Matching Clients</h3>
+          <p>Try refining your search query.</p>
+        </div>
+
+        <table *ngIf="filteredAccounts.length > 0" class="accounts-table">
           <thead>
             <tr>
               <th>Client Name</th>
@@ -219,7 +242,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let acc of recentAccounts" class="account-row">
+            <tr *ngFor="let acc of filteredAccounts" class="account-row">
               <td class="cell-name">
                 <span class="material-icons-round avatar">business</span>
                 <div class="cell-text">
