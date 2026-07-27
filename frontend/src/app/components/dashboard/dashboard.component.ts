@@ -49,6 +49,7 @@ export class DashboardComponent implements OnInit {
   isSavingSettings = false;
   isDarkMode = true;
   isOutlookConnected = false;
+  showAssignedColumn = false;
 
   // App Launcher & Role State
   showAppLauncher = false;

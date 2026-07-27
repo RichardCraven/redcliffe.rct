@@ -302,7 +302,7 @@
               <th>Start</th>
               <th>Status</th>
               <th>Related To</th>
-              <th>Assigned</th>
+              <th *ngIf="showAssignedColumn">Assigned</th>
               <th style="width: 40px; text-align: center;"></th>
             </tr>
           </thead>
@@ -334,7 +334,7 @@
                 </span>
                 <span *ngIf="!meeting.parent_name && !meeting.parent_type">—</span>
               </td>
-              <td>{{ meeting.assigned_user_name || 'Administrator' }}</td>
+              <td *ngIf="showAssignedColumn">{{ meeting.assigned_user_name || 'Administrator' }}</td>
               <td style="text-align: center; position: relative;">
                 <button (click)="toggleRowMenu(meeting.id, 'meeting', $event)" class="row-actions-btn" title="Actions">
                   <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
