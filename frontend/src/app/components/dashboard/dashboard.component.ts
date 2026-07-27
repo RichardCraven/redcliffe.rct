@@ -45,6 +45,13 @@ export class DashboardComponent implements OnInit {
   // Row Actions Context Menu State
   activeMenuRowId: string | null = null;
   activeMenuType: 'meeting' | 'user' | null = null;
+
+  // Custom Details Modal State
+  showDetailsModal = false;
+  detailsModalTitle = '';
+  detailsModalType: 'meeting' | 'user' | null = null;
+  selectedMeeting: MeetingBean | null = null;
+  selectedUser: UserBean | null = null;
   
   // Available Apps list
   appsList = [
@@ -419,7 +426,17 @@ export class DashboardComponent implements OnInit {
   }
 
   viewMeetingDetails(meeting: MeetingBean) {
-    alert(`Meeting Details:\n------------------\nSubject: ${meeting.name}\nStart Time: ${this.formatMeetingTime(meeting.date_start, meeting.date_end)}\nStatus: ${meeting.status}\nAssigned to: ${meeting.assigned_user_name || 'Administrator'}`);
+    this.selectedMeeting = meeting;
+    this.detailsModalTitle = 'Meeting Details';
+    this.detailsModalType = 'meeting';
+    this.showDetailsModal = true;
+  }
+
+  closeDetailsModal() {
+    this.showDetailsModal = false;
+    this.detailsModalType = null;
+    this.selectedMeeting = null;
+    this.selectedUser = null;
   }
 
   deleteMeeting(meeting: MeetingBean) {
@@ -436,8 +453,10 @@ export class DashboardComponent implements OnInit {
   }
 
   viewUserDetails(user: UserBean) {
-    const fullName = (user.first_name || user.last_name) ? `${user.first_name || ''} ${user.last_name || ''}` : '—';
-    alert(`User Details:\n------------------\nUsername: ${user.user_name}\nFull Name: ${fullName}\nEmail: ${user.email1 || '—'}\nStatus: ${user.status}\nIs Admin: ${this.checkBool(user.is_admin) ? 'Yes' : 'No'}`);
+    this.selectedUser = user;
+    this.detailsModalTitle = 'User Profile Details';
+    this.detailsModalType = 'user';
+    this.showDetailsModal = true;
   }
 
   deactivateUser(user: UserBean) {

@@ -578,3 +578,115 @@
     </div>
   </div>
 </div>
+
+<!-- Custom Details Modal (Glassmorphic) -->
+<div class="modal-backdrop" *ngIf="showDetailsModal" (click)="closeDetailsModal()">
+  <div class="modal-card details-card" (click)="$event.stopPropagation()" style="max-width: 500px;">
+    <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="material-icons-round modal-header-icon" [ngStyle]="{
+          'color': detailsModalType === 'user' ? '#ec4899' : '#0284c7',
+          'background': detailsModalType === 'user' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(2, 132, 199, 0.15)'
+        }">
+          {{ detailsModalType === 'user' ? 'person' : 'today' }}
+        </span>
+        <h3 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">
+          {{ detailsModalTitle }}
+        </h3>
+      </div>
+      <button class="close-modal-btn" (click)="closeDetailsModal()" title="Close details">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <!-- User Details Content -->
+    <div *ngIf="detailsModalType === 'user' && selectedUser" class="details-content">
+      <div class="details-grid">
+        <div class="detail-item">
+          <div class="detail-label">Username</div>
+          <div class="detail-value highlighted-value">{{ selectedUser.user_name }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Full Name</div>
+          <div class="detail-value">
+            {{ (selectedUser.first_name || selectedUser.last_name) ? ((selectedUser.first_name || '') + ' ' + (selectedUser.last_name || '')) : '—' }}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Email Address</div>
+          <div class="detail-value">{{ selectedUser.email1 || '—' }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Status</div>
+          <div class="detail-value">
+            <span class="status-badge" [ngClass]="{
+              'status-held': selectedUser.status === 'Active' || selectedUser.status === 'active',
+              'status-notheld': selectedUser.status === 'Inactive' || selectedUser.status === 'inactive'
+            }">
+              {{ selectedUser.status }}
+            </span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Is Admin</div>
+          <div class="detail-value">
+            <span class="material-icons-round" [ngStyle]="{'color': checkBool(selectedUser.is_admin) ? '#ec4899' : '#64748b'}" style="font-size: 20px;">
+              {{ checkBool(selectedUser.is_admin) ? 'check_circle' : 'cancel' }}
+            </span>
+            <span style="margin-left: 6px; font-weight: 500;">{{ checkBool(selectedUser.is_admin) ? 'Yes' : 'No' }}</span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Org Unit</div>
+          <div class="detail-value">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Meeting Details Content -->
+    <div *ngIf="detailsModalType === 'meeting' && selectedMeeting" class="details-content">
+      <div class="details-grid">
+        <div class="detail-item full-width">
+          <div class="detail-label">Meeting Name</div>
+          <div class="detail-value highlighted-value" style="font-size: 15px; font-weight: 600;">{{ selectedMeeting.name }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Schedule Time</div>
+          <div class="detail-value" style="font-size: 13px; color: #cbd5e1;">
+            {{ formatMeetingTime(selectedMeeting.date_start, selectedMeeting.date_end) }}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Status</div>
+          <div class="detail-value">
+            <span class="status-badge" [ngClass]="{
+              'status-held': selectedMeeting.status === 'Held',
+              'status-planned': selectedMeeting.status === 'Planned',
+              'status-notheld': selectedMeeting.status === 'Not Held'
+            }">
+              {{ selectedMeeting.status }}
+            </span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Related To</div>
+          <div class="detail-value">
+            <span *ngIf="selectedMeeting.parent_name">
+              <span class="parent-type-tag">{{ selectedMeeting.parent_type }}</span>
+              {{ selectedMeeting.parent_name }}
+            </span>
+            <span *ngIf="!selectedMeeting.parent_name">—</span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Assigned User</div>
+          <div class="detail-value">{{ selectedMeeting.assigned_user_name || 'Administrator' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px; margin-top: 24px; display: flex; justify-content: flex-end;">
+      <button class="btn btn-secondary" (click)="closeDetailsModal()" style="min-width: 90px;">Close</button>
+    </div>
+  </div>
+</div>
