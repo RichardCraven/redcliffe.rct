@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { CrmService, AccountBean, MeetingBean, UserBean, ImportResults } from '../../services/crm.service';
+import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ImportResults } from '../../services/crm.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -35,7 +35,11 @@ export class DashboardComponent implements OnInit {
   isLoadingUsers = false;
   usersSearchQuery = '';
 
-  activeView: 'accounts' | 'meetings' | 'users' = 'accounts';
+  reportsList: ReportBean[] = [];
+  isLoadingReports = false;
+  reportsSearchQuery = '';
+
+  activeView: 'accounts' | 'meetings' | 'users' | 'reports' = 'accounts';
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -44,14 +48,15 @@ export class DashboardComponent implements OnInit {
   
   // Row Actions Context Menu State
   activeMenuRowId: string | null = null;
-  activeMenuType: 'meeting' | 'user' | null = null;
+  activeMenuType: 'meeting' | 'user' | 'report' | null = null;
 
   // Custom Details Modal State
   showDetailsModal = false;
   detailsModalTitle = '';
-  detailsModalType: 'meeting' | 'user' | null = null;
+  detailsModalType: 'meeting' | 'user' | 'report' | null = null;
   selectedMeeting: MeetingBean | null = null;
   selectedUser: UserBean | null = null;
+  selectedReport: ReportBean | null = null;
   
   // Available Apps list
   appsList = [
@@ -128,6 +133,9 @@ export class DashboardComponent implements OnInit {
     } else if (appName === 'Users') {
       this.activeView = 'users';
       this.loadRecentUsers();
+    } else if (appName === 'Reports') {
+      this.activeView = 'reports';
+      this.loadRecentReports();
     } else if (appName === 'Imports') {
       if (this.currentRole === 'Sales') {
         alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
@@ -414,7 +422,7 @@ export class DashboardComponent implements OnInit {
     this.activeMenuType = null;
   }
 
-  toggleRowMenu(id: string, type: 'meeting' | 'user', event: Event) {
+  toggleRowMenu(id: string, type: 'meeting' | 'user' | 'report', event: Event) {
     event.stopPropagation();
     if (this.activeMenuRowId === id && this.activeMenuType === type) {
       this.activeMenuRowId = null;
@@ -432,11 +440,19 @@ export class DashboardComponent implements OnInit {
     this.showDetailsModal = true;
   }
 
+  viewReportDetails(report: ReportBean) {
+    this.selectedReport = report;
+    this.detailsModalTitle = 'Report Details';
+    this.detailsModalType = 'report';
+    this.showDetailsModal = true;
+  }
+
   closeDetailsModal() {
     this.showDetailsModal = false;
     this.detailsModalType = null;
     this.selectedMeeting = null;
     this.selectedUser = null;
+    this.selectedReport = null;
   }
 
   deleteMeeting(meeting: MeetingBean) {
@@ -479,6 +495,43 @@ export class DashboardComponent implements OnInit {
         },
         error: (err) => {
           alert('Failed to delete user: ' + (err.error?.error || err.message));
+        }
+      });
+    }
+  }
+
+  loadRecentReports() {
+    this.isLoadingReports = true;
+    this.crmService.getRecentReports(100).subscribe({
+      next: (res) => {
+        this.reportsList = res.list || [];
+        this.isLoadingReports = false;
+      },
+      error: () => {
+        this.isLoadingReports = false;
+      }
+    });
+  }
+
+  get filteredReports() {
+    if (!this.reportsSearchQuery) {
+      return this.reportsList;
+    }
+    const query = this.reportsSearchQuery.toLowerCase();
+    return this.reportsList.filter(r => 
+      (r.name && r.name.toLowerCase().includes(query)) ||
+      (r.report_module && r.report_module.toLowerCase().includes(query))
+    );
+  }
+
+  deleteReport(report: ReportBean) {
+    if (confirm(`Are you sure you want to delete report "${report.name}"?`)) {
+      this.crmService.deleteReport(report.id).subscribe({
+        next: () => {
+          this.reportsList = this.reportsList.filter(r => r.id !== report.id);
+        },
+        error: (err) => {
+          alert('Failed to delete report: ' + (err.error?.error || err.message));
         }
       });
     }

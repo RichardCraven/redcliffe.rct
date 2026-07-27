@@ -54,6 +54,15 @@ export interface UserBean {
   email1?: string;
 }
 
+export interface ReportBean {
+  id: string;
+  name: string;
+  report_module: string;
+  date_modified: string;
+  assigned_user_name?: string;
+  assigned_user_id?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -105,6 +114,10 @@ export class CrmService {
     return this.http.get<{ list: UserBean[] }>(`${this.apiUrl}/users?limit=${limit}`, this.getHeaders());
   }
 
+  getRecentReports(limit: number = 100): Observable<{ list: ReportBean[] }> {
+    return this.http.get<{ list: ReportBean[] }>(`${this.apiUrl}/reports?limit=${limit}`, this.getHeaders());
+  }
+
   importCsv(file: File): Observable<ImportResults> {
     const formData = new FormData();
     formData.append('file', file);
@@ -121,6 +134,10 @@ export class CrmService {
 
   deleteUser(id: string): Observable<any> {
     return this.http.delete<any>(`${this.apiUrl}/users/${id}`, this.getHeaders());
+  }
+
+  deleteReport(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/reports/${id}`, this.getHeaders());
   }
 
   updateUserStatus(id: string, status: string): Observable<any> {

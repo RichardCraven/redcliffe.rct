@@ -42,6 +42,15 @@
         <span class="material-icons-round">manage_accounts</span>
         <span class="btn-nav-text">Users</span>
       </button>
+      <button 
+        (click)="selectApp('Reports')" 
+        class="btn-nav-icon" 
+        [class.active]="activeView === 'reports'" 
+        title="Reports"
+      >
+        <span class="material-icons-round">analytics</span>
+        <span class="btn-nav-text">Reports</span>
+      </button>
     </div>
     
     <div class="status-indicator">
@@ -335,6 +344,91 @@
       </div>
     </section>
 
+    <!-- Center Panel: Reports in CRM -->
+    <section *ngIf="activeView === 'reports'" class="panel-crm-records glass-panel">
+      <div class="panel-header" style="justify-content: space-between;">
+        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
+          <span class="material-icons-round header-icon" style="background: rgba(20, 184, 166, 0.15); color: #14b8a6; box-shadow: 0 0 16px rgba(20, 184, 166, 0.2);">analytics</span>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">All Reports</h2>
+          
+          <!-- Search Bar -->
+          <div class="meetings-search-box">
+            <span class="material-icons-round">search</span>
+            <input 
+              type="text" 
+              [(ngModel)]="reportsSearchQuery" 
+              placeholder="Search reports..."
+              style="width: 250px;"
+            >
+          </div>
+        </div>
+      </div>
+
+      <div class="table-container meetings-table-container">
+        <!-- Loading State -->
+        <div *ngIf="isLoadingReports && reportsList.length === 0" class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Retrieving Reports from SpiceCRM...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="!isLoadingReports && filteredReports.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon" style="color: #14b8a6;">assessment</span>
+          <h3>No Reports Found</h3>
+          <p>Create or schedule reports to populate metrics.</p>
+        </div>
+
+        <table *ngIf="filteredReports.length > 0" class="accounts-table">
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;"><input type="checkbox"></th>
+              <th>Report Name</th>
+              <th>Module</th>
+              <th>Date Modified</th>
+              <th>Assigned</th>
+              <th style="width: 40px; text-align: center;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let report of filteredReports" class="account-row">
+              <td style="text-align: center;"><input type="checkbox"></td>
+              <td class="cell-name">
+                <span class="material-icons-round avatar" style="background: rgba(20, 184, 166, 0.1); color: #14b8a6;">assessment</span>
+                <div class="cell-text">
+                  <span class="name-text meeting-row-name">{{ report.name }}</span>
+                  <span class="industry-badge" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: #94a3b8; font-weight: 600;">Report</span>
+                </div>
+              </td>
+              <td>
+                <span class="location-badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border-color: rgba(14, 165, 233, 0.3);">
+                  {{ report.report_module }}
+                </span>
+              </td>
+              <td>{{ report.date_modified | date:'mediumDate' }}</td>
+              <td>{{ report.assigned_user_name || 'Administrator' }}</td>
+              <td style="text-align: center; position: relative;">
+                <button (click)="toggleRowMenu(report.id, 'report', $event)" class="row-actions-btn" title="Actions">
+                  <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
+                </button>
+                
+                <!-- Floating Context Menu -->
+                <div *ngIf="activeMenuRowId === report.id && activeMenuType === 'report'" class="row-context-menu glass-panel">
+                  <button (click)="viewReportDetails(report)" class="menu-item">
+                    <span class="material-icons-round">info</span>
+                    Details
+                  </button>
+                  <button (click)="deleteReport(report)" class="menu-item delete-item">
+                    <span class="material-icons-round">delete</span>
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Right Panel: Users in CRM (Replicated View) -->
     <section *ngIf="activeView === 'users'" class="panel-crm-records glass-panel">
       <div class="panel-header" style="justify-content: space-between;">
@@ -616,10 +710,10 @@
     <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 16px;">
       <div style="display: flex; align-items: center; gap: 12px;">
         <span class="material-icons-round modal-header-icon" [ngStyle]="{
-          'color': detailsModalType === 'user' ? '#ec4899' : '#0284c7',
-          'background': detailsModalType === 'user' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(2, 132, 199, 0.15)'
+          'color': detailsModalType === 'user' ? '#ec4899' : (detailsModalType === 'report' ? '#14b8a6' : '#0284c7'),
+          'background': detailsModalType === 'user' ? 'rgba(236, 72, 153, 0.15)' : (detailsModalType === 'report' ? 'rgba(20, 184, 166, 0.15)' : 'rgba(2, 132, 199, 0.15)')
         }">
-          {{ detailsModalType === 'user' ? 'person' : 'today' }}
+          {{ detailsModalType === 'user' ? 'person' : (detailsModalType === 'report' ? 'analytics' : 'today') }}
         </span>
         <h3 class="modal-title" style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">
           {{ detailsModalTitle }}
@@ -712,6 +806,34 @@
         <div class="detail-item">
           <div class="detail-label">Assigned User</div>
           <div class="detail-value">{{ selectedMeeting.assigned_user_name || 'Administrator' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Report Details Content -->
+    <div *ngIf="detailsModalType === 'report' && selectedReport" class="details-content">
+      <div class="details-grid">
+        <div class="detail-item full-width">
+          <div class="detail-label">Report Name</div>
+          <div class="detail-value highlighted-value" style="font-size: 15px; font-weight: 600; color: #14b8a6;">{{ selectedReport.name }}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Target Module</div>
+          <div class="detail-value">
+            <span class="parent-type-tag" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border-color: rgba(14, 165, 233, 0.3);">
+              {{ selectedReport.report_module }}
+            </span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Date Modified</div>
+          <div class="detail-value" style="font-size: 13px; color: #cbd5e1;">
+            {{ selectedReport.date_modified | date:'medium' }}
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Assigned User</div>
+          <div class="detail-value">{{ selectedReport.assigned_user_name || 'Administrator' }}</div>
         </div>
       </div>
     </div>

@@ -267,6 +267,82 @@ app.get('/api/users', ensureUserSession, ensureAuthenticated, async (req, res) =
   }
 });
 
+// Endpoint to fetch reports from SpiceCRM
+app.get('/api/reports', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const limit = req.query.limit || 100;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/KReports?limit=${limit}`, {
+      method: 'GET',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/KReports?limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching reports:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to delete a specific report from SpiceCRM
+app.delete('/api/reports/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/KReports/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/KReports/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json({ success: data });
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json({ success: data });
+  } catch (error) {
+    console.error(`Error deleting report ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to delete a specific account from SpiceCRM
 app.delete('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { id } = req.params;
