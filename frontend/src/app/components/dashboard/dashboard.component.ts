@@ -407,11 +407,22 @@ export class DashboardComponent implements OnInit {
       return this.meetingsList;
     }
     const query = this.meetingsSearchQuery.toLowerCase();
-    return this.meetingsList.filter(m => 
-      (m.name && m.name.toLowerCase().includes(query)) ||
-      (m.status && m.status.toLowerCase().includes(query)) ||
-      (m.assigned_user_name && m.assigned_user_name.toLowerCase().includes(query))
-    );
+    return this.meetingsList.filter(m => {
+      const nameMatch = !!(m.name && m.name.toLowerCase().includes(query));
+      const statusMatch = !!(m.status && m.status.toLowerCase().includes(query));
+      
+      let assignedName = '';
+      if (m.assigned_user_name) {
+        if (typeof m.assigned_user_name === 'string') {
+          assignedName = m.assigned_user_name;
+        } else if (typeof m.assigned_user_name === 'object') {
+          assignedName = (m.assigned_user_name as any).name || (m.assigned_user_name as any).user_name || '';
+        }
+      }
+      const assignedMatch = assignedName.toLowerCase().includes(query);
+
+      return nameMatch || statusMatch || assignedMatch;
+    });
   }
 
   formatMeetingTime(startStr: string, endStr: string): string {
