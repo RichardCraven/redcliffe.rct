@@ -344,9 +344,6 @@
               <th>Name</th>
               <th style="text-align: center;">Is Admin</th>
               <th>Organizational...</th>
-              <th style="text-align: center;">Only Portal Us...</th>
-              <th>External Auth. ...</th>
-              <th style="text-align: center;">API User</th>
               <th style="width: 40px; text-align: center;"></th>
             </tr>
           </thead>
@@ -375,17 +372,6 @@
                 </span>
               </td>
               <td>—</td>
-              <td style="text-align: center;">
-                <span class="material-icons-round checkbox-display" [ngClass]="{'checked': checkBool(user.portal_only)}">
-                  {{ checkBool(user.portal_only) ? 'check_box' : 'check_box_outline_blank' }}
-                </span>
-              </td>
-              <td>—</td>
-              <td style="text-align: center;">
-                <span class="material-icons-round checkbox-display" [ngClass]="{'checked': checkBool(user.is_api_user)}">
-                  {{ checkBool(user.is_api_user) ? 'check_box' : 'check_box_outline_blank' }}
-                </span>
-              </td>
               <td style="text-align: center;">
                 <button class="row-actions-btn" title="Actions">
                   <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
