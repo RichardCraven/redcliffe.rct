@@ -403,7 +403,7 @@
               <th>Report Name</th>
               <th>Module</th>
               <th>Date Modified</th>
-              <th>Assigned</th>
+              <th *ngIf="showReportAssignedColumn">Assigned</th>
               <th style="width: 40px; text-align: center;"></th>
             </tr>
           </thead>
@@ -423,7 +423,7 @@
                 </span>
               </td>
               <td>{{ report.date_modified | date:'mediumDate' }}</td>
-              <td>{{ report.assigned_user_name || 'Administrator' }}</td>
+              <td *ngIf="showReportAssignedColumn">{{ report.assigned_user_name || 'Administrator' }}</td>
               <td style="text-align: center; position: relative;">
                 <button (click)="toggleRowMenu(report.id, 'report', $event)" class="row-actions-btn" title="Actions">
                   <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>

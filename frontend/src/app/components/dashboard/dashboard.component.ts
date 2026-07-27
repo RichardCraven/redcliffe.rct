@@ -50,6 +50,7 @@ export class DashboardComponent implements OnInit {
   isDarkMode = true;
   isOutlookConnected = false;
   showAssignedColumn = false;
+  showReportAssignedColumn = false;
 
   // App Launcher & Role State
   showAppLauncher = false;
