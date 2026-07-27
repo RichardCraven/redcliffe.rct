@@ -228,7 +228,13 @@ body.light-theme .account-row:hover {
   background: rgba(15, 23, 42, 0.02);
 }
 
+body.light-theme .table-container {
+  background: rgba(255, 255, 255, 0.45);
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
 body.light-theme .accounts-table th {
+  background: #f8fafc;
   color: #475569;
   border-bottom: 2px solid rgba(15, 23, 42, 0.08);
 }
