@@ -70,7 +70,7 @@
   <main class="dashboard-grid" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users'">
     <!-- Left Panel: CSV Import Actions -->
     <section *ngIf="currentRole === 'Admin' && activeView === 'accounts'" class="panel-import glass-panel glow-effect">
-      <div class="panel-header">
+      <div class="panel-header" style="justify-content: flex-start; gap: 12px;">
         <span class="material-icons-round header-icon">cloud_upload</span>
         <h2>Client List Import</h2>
       </div>
