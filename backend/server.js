@@ -889,6 +889,11 @@ app.post('/api/users/:id/outlook-tokens', ensureUserSession, ensureAuthenticated
     });
     const data = await updateRes.json();
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper to get active access token, refreshing if expired
 async function getOutlookAccessToken(userId) {
   const userRes = await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
