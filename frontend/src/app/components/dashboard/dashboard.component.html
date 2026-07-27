@@ -19,10 +19,10 @@
         (click)="selectApp('Accounts')" 
         class="btn-nav-icon" 
         [class.active]="activeView === 'accounts'" 
-        title="Client List"
+        title="Accounts"
       >
         <span class="material-icons-round">corporate_fare</span>
-        <span class="btn-nav-text">Client List</span>
+        <span class="btn-nav-text">Accounts</span>
       </button>
       <button 
         (click)="selectApp('Meetings')" 
@@ -32,6 +32,15 @@
       >
         <span class="material-icons-round">today</span>
         <span class="btn-nav-text">Meetings</span>
+      </button>
+      <button 
+        (click)="selectApp('Users')" 
+        class="btn-nav-icon" 
+        [class.active]="activeView === 'users'" 
+        title="Users"
+      >
+        <span class="material-icons-round">manage_accounts</span>
+        <span class="btn-nav-text">Users</span>
       </button>
     </div>
     
