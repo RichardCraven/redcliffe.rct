@@ -54,6 +54,7 @@ export interface MeetingBean {
   assigned_user_name?: string;
   assigned_user_id?: string;
   isOutlook?: boolean;
+  joinUrl?: string | null;
 }
 
 export interface UserBean {

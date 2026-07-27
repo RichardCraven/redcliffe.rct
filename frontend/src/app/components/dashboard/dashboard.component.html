@@ -328,7 +328,11 @@
                 </span>
               </td>
               <td>
-                <span *ngIf="meeting.parent_name" class="meeting-row-name">{{ meeting.parent_name }}</span>
+                <a *ngIf="meeting.joinUrl" [href]="meeting.joinUrl" target="_blank" class="meeting-row-name" style="color: #3b82f6; text-decoration: none; border-bottom: 1px dashed rgba(59, 130, 246, 0.4); padding-bottom: 1px; display: inline-flex; align-items: center; gap: 4px;">
+                  <span class="material-icons-round" style="font-size: 14px; color: #3b82f6;">open_in_new</span>
+                  {{ meeting.parent_name }}
+                </a>
+                <span *ngIf="!meeting.joinUrl && meeting.parent_name" class="meeting-row-name">{{ meeting.parent_name }}</span>
                 <span *ngIf="!meeting.parent_name && meeting.parent_type" style="color: #64748b; font-size: 12px; font-weight: 500;">
                   {{ meeting.parent_type }}
                 </span>

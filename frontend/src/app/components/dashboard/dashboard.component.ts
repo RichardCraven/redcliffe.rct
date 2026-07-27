@@ -362,7 +362,8 @@ export class DashboardComponent implements OnInit {
                   parent_name: evt.location?.displayName || 'Outlook Calendar',
                   parent_type: 'Outlook',
                   assigned_user_name: evt.organizer?.emailAddress?.name || 'Outlook User',
-                  isOutlook: true
+                  isOutlook: true,
+                  joinUrl: evt.onlineMeeting?.joinUrl || evt.onlineMeetingUrl || evt.webLink || null
                 };
               });
 
