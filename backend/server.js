@@ -759,6 +759,17 @@ app.post('/api/import', ensureUserSession, ensureAuthenticated, upload.single('f
   });
 });
 
+// Debug endpoint to safely inspect environment variable presence
+app.get('/api/debug-env', (req, res) => {
+  res.json({
+    PORT: process.env.PORT,
+    SPICE_CRM_URL: process.env.SPICE_CRM_URL,
+    MS_CLIENT_ID: process.env.MS_CLIENT_ID,
+    MS_REDIRECT_URI: process.env.MS_REDIRECT_URI,
+    MS_CLIENT_SECRET_SET: !!process.env.MS_CLIENT_SECRET
+  });
+});
+
 // ==========================================
 // MICROSOFT OUTLOOK GRAPH API INTEGRATION ROUTES
 // ==========================================
