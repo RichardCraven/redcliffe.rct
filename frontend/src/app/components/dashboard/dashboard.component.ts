@@ -636,6 +636,7 @@ export class DashboardComponent implements OnInit {
           sessionStorage.setItem('profile_first_name', found.first_name || '');
           sessionStorage.setItem('profile_last_name', found.last_name || '');
           sessionStorage.setItem('profile_email', found.email1 || '');
+          this.loadOutlookStatus();
         }
       }
     });
@@ -739,7 +740,11 @@ export class DashboardComponent implements OnInit {
     if (!this.currentUserProfile) return;
     this.crmService.getOutlookStatus(this.currentUserProfile.id).subscribe({
       next: (res) => {
+        const wasConnected = this.isOutlookConnected;
         this.isOutlookConnected = res.connected;
+        if (res.connected && (wasConnected !== res.connected || this.activeView === 'meetings')) {
+          this.loadRecentMeetings();
+        }
       },
       error: () => {
         this.isOutlookConnected = false;
