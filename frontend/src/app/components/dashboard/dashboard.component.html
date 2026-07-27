@@ -86,101 +86,124 @@
   </header>
 
   <!-- Dashboard Content Grid -->
-  <main class="dashboard-grid" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings'">
+  <main class="dashboard-grid" [class.collapsed-sidebar]="isImportPanelCollapsed && activeView === 'accounts' && currentRole === 'Admin'" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings'">
     <!-- Left Panel: CSV Import Actions -->
-    <section *ngIf="currentRole === 'Admin' && activeView === 'accounts'" class="panel-import glass-panel glow-effect">
-      <div class="panel-header" style="justify-content: flex-start; gap: 12px;">
-        <span class="material-icons-round header-icon">cloud_upload</span>
-        <h2>Client List Import</h2>
-      </div>
-      
-      <p class="panel-description">
-        Upload a client list here. The system will parse accounts, map standard and custom details, and populate them directly into SpiceCRM.
-      </p>
+    <section *ngIf="currentRole === 'Admin' && activeView === 'accounts'" class="panel-import glass-panel glow-effect" [class.collapsed]="isImportPanelCollapsed">
+      <!-- Expanded State Content -->
+      <ng-container *ngIf="!isImportPanelCollapsed">
+        <div class="panel-header" style="justify-content: space-between; align-items: center; width: 100%;">
+          <div class="header-left" style="display: flex; align-items: center; gap: 12px;">
+            <span class="material-icons-round header-icon">cloud_upload</span>
+            <h2>Client List Import</h2>
+          </div>
+          <button (click)="isImportPanelCollapsed = true" class="btn btn-secondary btn-icon" title="Collapse Panel" style="padding: 0; min-width: auto; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <span class="material-icons-round" style="font-size: 18px;">chevron_left</span>
+          </button>
+        </div>
+        
+        <p class="panel-description">
+          Upload a client list here. The system will parse accounts, map standard and custom details, and populate them directly into SpiceCRM.
+        </p>
 
-      <!-- Drag & Drop Zone -->
-      <div 
-        class="drop-zone"
-        [class.dragover]="dragOver"
-        (dragover)="onDragOver($event)"
-        (dragleave)="onDragLeave($event)"
-        (drop)="onDrop($event)"
-        (click)="fileInput.click()"
-      >
-        <input 
-          #fileInput 
-          type="file" 
-          accept=".csv" 
-          (change)="onFileSelected($event)" 
-          style="display: none;"
+        <!-- Drag & Drop Zone -->
+        <div 
+          class="drop-zone"
+          [class.dragover]="dragOver"
+          (dragover)="onDragOver($event)"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event)"
+          (click)="fileInput.click()"
         >
-        <span class="material-icons-round upload-cloud">backup</span>
-        <div class="drop-text">
-          <span class="highlight">Drag & drop CSV file</span> or click to browse
+          <input 
+            #fileInput 
+            type="file" 
+            accept=".csv" 
+            (change)="onFileSelected($event)" 
+            style="display: none;"
+          >
+          <span class="material-icons-round upload-cloud">backup</span>
+          <div class="drop-text">
+            <span class="highlight">Drag & drop CSV file</span> or click to browse
+          </div>
+          <p class="file-limits">Supports Client List.csv format</p>
         </div>
-        <p class="file-limits">Supports Client List.csv format</p>
-      </div>
 
-      <!-- Selected File & Import Trigger -->
-      <div *ngIf="selectedFile" class="import-actions-wrapper">
-        <div class="selected-file-panel glass-panel">
-          <div class="file-info">
-            <span class="material-icons-round file-icon">description</span>
-            <div class="file-details">
-              <span class="file-name">{{ selectedFile.name }}</span>
-              <span class="file-size">{{ (selectedFile.size / 1024) | number:'1.0-1' }} KB</span>
+        <!-- Selected File & Import Trigger -->
+        <div *ngIf="selectedFile" class="import-actions-wrapper">
+          <div class="selected-file-panel glass-panel">
+            <div class="file-info">
+              <span class="material-icons-round file-icon">description</span>
+              <div class="file-details">
+                <span class="file-name">{{ selectedFile.name }}</span>
+                <span class="file-size">{{ (selectedFile.size / 1024) | number:'1.0-1' }} KB</span>
+              </div>
+            </div>
+          </div>
+          <button (click)="startImport()" class="btn btn-primary btn-import-block" [disabled]="isUploading">
+            <span class="material-icons-round">bolt</span>
+            <span>Begin Import</span>
+          </button>
+        </div>
+
+        <!-- Uploading/Processing State -->
+        <div *ngIf="isUploading" class="import-progress-card glass-panel">
+          <div class="progress-header">
+            <span>Processing database transactions...</span>
+            <span class="progress-percent">{{ uploadProgress }}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" [style.width.%]="uploadProgress"></div>
+          </div>
+        </div>
+
+        <!-- Import Results Summary -->
+        <div *ngIf="importResults" class="import-results-card glass-panel">
+          <div class="results-header">
+            <span class="material-icons-round success-icon">check_circle</span>
+            <h3>Import Completed Successfully</h3>
+          </div>
+          <div class="results-stats">
+            <div class="stat-box success">
+              <span class="stat-val">{{ importResults.success }}</span>
+              <span class="stat-label">Imported</span>
+            </div>
+            <div class="stat-box failed">
+              <span class="stat-val">{{ importResults.failed }}</span>
+              <span class="stat-label">Skipped</span>
+            </div>
+            <div class="stat-box total">
+              <span class="stat-val">{{ importResults.total }}</span>
+              <span class="stat-label">Total Records</span>
+            </div>
+          </div>
+
+          <!-- Import Errors Detail -->
+          <div *ngIf="importResults.errors && importResults.errors.length > 0" class="errors-section">
+            <h4>Import Log Details ({{ importResults.errors.length }} warnings)</h4>
+            <div class="errors-list">
+              <div *ngFor="let err of importResults.errors" class="error-item">
+                <span class="error-record">{{ err.name }}:</span>
+                <span class="error-text">{{ err.error }}</span>
+              </div>
             </div>
           </div>
         </div>
-        <button (click)="startImport()" class="btn btn-primary btn-import-block" [disabled]="isUploading">
-          <span class="material-icons-round">bolt</span>
-          <span>Begin Import</span>
-        </button>
-      </div>
+      </ng-container>
 
-      <!-- Uploading/Processing State -->
-      <div *ngIf="isUploading" class="import-progress-card glass-panel">
-        <div class="progress-header">
-          <span>Processing database transactions...</span>
-          <span class="progress-percent">{{ uploadProgress }}%</span>
-        </div>
-        <div class="progress-bar-container">
-          <div class="progress-bar" [style.width.%]="uploadProgress"></div>
-        </div>
-      </div>
-
-      <!-- Import Results Summary -->
-      <div *ngIf="importResults" class="import-results-card glass-panel">
-        <div class="results-header">
-          <span class="material-icons-round success-icon">check_circle</span>
-          <h3>Import Completed Successfully</h3>
-        </div>
-        <div class="results-stats">
-          <div class="stat-box success">
-            <span class="stat-val">{{ importResults.success }}</span>
-            <span class="stat-label">Imported</span>
+      <!-- Collapsed State Content -->
+      <ng-container *ngIf="isImportPanelCollapsed">
+        <div class="collapsed-import-container" (click)="isImportPanelCollapsed = false" title="Expand Import Panel">
+          <span class="material-icons-round header-icon" style="margin: 0; background: rgba(239, 68, 68, 0.15); color: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.2);">cloud_upload</span>
+          
+          <div class="collapsed-vertical-text">
+            Client Import
           </div>
-          <div class="stat-box failed">
-            <span class="stat-val">{{ importResults.failed }}</span>
-            <span class="stat-label">Skipped</span>
-          </div>
-          <div class="stat-box total">
-            <span class="stat-val">{{ importResults.total }}</span>
-            <span class="stat-label">Total Records</span>
-          </div>
+          
+          <button class="expand-arrow-btn">
+            <span class="material-icons-round">chevron_right</span>
+          </button>
         </div>
-
-        <!-- Import Errors Detail -->
-        <div *ngIf="importResults.errors && importResults.errors.length > 0" class="errors-section">
-          <h4>Import Log Details ({{ importResults.errors.length }} warnings)</h4>
-          <div class="errors-list">
-            <div *ngFor="let err of importResults.errors" class="error-item">
-              <span class="error-record">{{ err.name }}:</span>
-              <span class="error-text">{{ err.error }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      </ng-container>
     </section>
 
     <!-- Right Panel: Recent Accounts in CRM -->

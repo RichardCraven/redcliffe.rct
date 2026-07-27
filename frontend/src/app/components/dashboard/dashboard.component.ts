@@ -52,6 +52,7 @@ export class DashboardComponent implements OnInit {
   isOutlookConnected = false;
   showAssignedColumn = false;
   showReportAssignedColumn = false;
+  isImportPanelCollapsed = false;
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -335,6 +336,8 @@ export class DashboardComponent implements OnInit {
         // Handle list property returned by SpiceCRM API
         this.recentAccounts = res.list || [];
         this.isLoadingAccounts = false;
+        // Collapse by default if accounts exist, expand if empty
+        this.isImportPanelCollapsed = this.recentAccounts.length > 0;
       },
       error: () => {
         this.isLoadingAccounts = false;

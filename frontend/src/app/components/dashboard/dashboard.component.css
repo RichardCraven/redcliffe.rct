@@ -104,6 +104,11 @@
   grid-template-columns: 338px 1fr;
   gap: 24px;
   flex: 1;
+  transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-grid.collapsed-sidebar {
+  grid-template-columns: 64px 1fr;
 }
 
 @media (max-width: 1024px) {
@@ -1707,4 +1712,76 @@
   color: #94a3b8;
   transform: scale(1.05);
 }
+
+/* Collapsible CSV Import Panel Styles */
+.panel-import {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.panel-import.collapsed {
+  padding: 24px 8px;
+  align-items: center;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+.panel-import.collapsed:hover {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.collapsed-import-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  gap: 20px;
+}
+
+.collapsed-vertical-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  opacity: 0.55;
+  margin: auto 0;
+  user-select: none;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.panel-import.collapsed:hover .collapsed-vertical-text {
+  opacity: 0.9;
+  color: #f8fafc;
+}
+
+.expand-arrow-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  color: var(--color-text-primary);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: auto;
+  padding: 0;
+}
+
+.panel-import.collapsed:hover .expand-arrow-btn {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+}
+
 
