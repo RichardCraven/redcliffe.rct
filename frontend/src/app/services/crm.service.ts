@@ -115,6 +115,18 @@ export class CrmService {
     return this.http.delete<{ success: boolean }>(`${this.apiUrl}/accounts/${id}`, this.getHeaders());
   }
 
+  deleteMeeting(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/meetings/${id}`, this.getHeaders());
+  }
+
+  deleteUser(id: string): Observable<any> {
+    return this.http.delete<any>(`${this.apiUrl}/users/${id}`, this.getHeaders());
+  }
+
+  updateUserStatus(id: string, status: string): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/users/${id}/status`, { status }, this.getHeaders());
+  }
+
   deleteAllAccounts(password: string): Observable<{ success: boolean; deleted: number; failed: number }> {
     return this.http.post<{ success: boolean; deleted: number; failed: number }>(`${this.apiUrl}/accounts/delete-all`, { password }, this.getHeaders());
   }

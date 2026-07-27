@@ -281,10 +281,22 @@
                 <span *ngIf="!meeting.parent_name && !meeting.parent_type">—</span>
               </td>
               <td>{{ meeting.assigned_user_name || 'Administrator' }}</td>
-              <td style="text-align: center;">
-                <button class="row-actions-btn" title="Actions">
+              <td style="text-align: center; position: relative;">
+                <button (click)="toggleRowMenu(meeting.id, 'meeting', $event)" class="row-actions-btn" title="Actions">
                   <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
                 </button>
+                
+                <!-- Floating Context Menu -->
+                <div *ngIf="activeMenuRowId === meeting.id && activeMenuType === 'meeting'" class="row-context-menu glass-panel">
+                  <button (click)="viewMeetingDetails(meeting)" class="menu-item">
+                    <span class="material-icons-round">info</span>
+                    Details
+                  </button>
+                  <button (click)="deleteMeeting(meeting)" class="menu-item delete-item">
+                    <span class="material-icons-round">delete</span>
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -372,10 +384,26 @@
                 </span>
               </td>
               <td>—</td>
-              <td style="text-align: center;">
-                <button class="row-actions-btn" title="Actions">
+              <td style="text-align: center; position: relative;">
+                <button (click)="toggleRowMenu(user.id, 'user', $event)" class="row-actions-btn" title="Actions">
                   <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
                 </button>
+                
+                <!-- Floating Context Menu -->
+                <div *ngIf="activeMenuRowId === user.id && activeMenuType === 'user'" class="row-context-menu glass-panel">
+                  <button (click)="viewUserDetails(user)" class="menu-item">
+                    <span class="material-icons-round">info</span>
+                    Details
+                  </button>
+                  <button (click)="deactivateUser(user)" class="menu-item" [style.color]="user.status === 'Active' || user.status === 'active' ? '#f59e0b' : '#10b981'">
+                    <span class="material-icons-round" style="font-size: 18px;">{{ user.status === 'Active' || user.status === 'active' ? 'block' : 'check_circle' }}</span>
+                    {{ user.status === 'Active' || user.status === 'active' ? 'Deactivate' : 'Activate' }}
+                  </button>
+                  <button (click)="deleteUser(user)" class="menu-item delete-item">
+                    <span class="material-icons-round">delete</span>
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>

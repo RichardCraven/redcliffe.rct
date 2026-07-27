@@ -305,6 +305,125 @@ app.delete('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (r
   }
 });
 
+// Endpoint to delete a specific meeting from SpiceCRM
+app.delete('/api/meetings/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Meetings/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Meetings/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json({ success: data });
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json({ success: data });
+  } catch (error) {
+    console.error(`Error deleting meeting ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to delete a specific user from SpiceCRM
+app.delete('/api/users/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json({ success: data });
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json({ success: data });
+  } catch (error) {
+    console.error(`Error deleting user ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to update user status
+app.post('/api/users/:id/status', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ status })
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ status })
+      });
+      const data = await retryResponse.json();
+      return res.json({ success: data });
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json({ success: data });
+  } catch (error) {
+    console.error(`Error updating status for user ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to delete all accounts from SpiceCRM (requires admin password verification)
 app.post('/api/accounts/delete-all', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { password } = req.body;

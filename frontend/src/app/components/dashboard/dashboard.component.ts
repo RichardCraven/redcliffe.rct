@@ -42,6 +42,10 @@ export class DashboardComponent implements OnInit {
   appSearchTerm = '';
   currentRole: 'Admin' | 'Sales' = 'Admin';
   
+  // Row Actions Context Menu State
+  activeMenuRowId: string | null = null;
+  activeMenuType: 'meeting' | 'user' | null = null;
+  
   // Available Apps list
   appsList = [
     { name: 'Accounts', desc: 'Manage customer portfolios and details.', icon: 'corporate_fare', type: 'accounts' },
@@ -395,6 +399,70 @@ export class DashboardComponent implements OnInit {
 
   checkBool(val: any): boolean {
     return val === true || val === 1 || val === '1' || val === 'true' || val === 'yes' || val === 'Checked' || val === 'checked';
+  }
+
+  @HostListener('document:click')
+  onDocumentClick() {
+    this.activeMenuRowId = null;
+    this.activeMenuType = null;
+  }
+
+  toggleRowMenu(id: string, type: 'meeting' | 'user', event: Event) {
+    event.stopPropagation();
+    if (this.activeMenuRowId === id && this.activeMenuType === type) {
+      this.activeMenuRowId = null;
+      this.activeMenuType = null;
+    } else {
+      this.activeMenuRowId = id;
+      this.activeMenuType = type;
+    }
+  }
+
+  viewMeetingDetails(meeting: MeetingBean) {
+    alert(`Meeting Details:\n------------------\nSubject: ${meeting.name}\nStart Time: ${this.formatMeetingTime(meeting.date_start, meeting.date_end)}\nStatus: ${meeting.status}\nAssigned to: ${meeting.assigned_user_name || 'Administrator'}`);
+  }
+
+  deleteMeeting(meeting: MeetingBean) {
+    if (confirm(`Are you sure you want to delete the meeting "${meeting.name}"?`)) {
+      this.crmService.deleteMeeting(meeting.id).subscribe({
+        next: () => {
+          this.meetingsList = this.meetingsList.filter(m => m.id !== meeting.id);
+        },
+        error: (err) => {
+          alert('Failed to delete meeting: ' + (err.error?.error || err.message));
+        }
+      });
+    }
+  }
+
+  viewUserDetails(user: UserBean) {
+    const fullName = (user.first_name || user.last_name) ? `${user.first_name || ''} ${user.last_name || ''}` : '—';
+    alert(`User Details:\n------------------\nUsername: ${user.user_name}\nFull Name: ${fullName}\nEmail: ${user.email1 || '—'}\nStatus: ${user.status}\nIs Admin: ${this.checkBool(user.is_admin) ? 'Yes' : 'No'}`);
+  }
+
+  deactivateUser(user: UserBean) {
+    const newStatus = (user.status === 'Active' || user.status === 'active') ? 'Inactive' : 'Active';
+    this.crmService.updateUserStatus(user.id, newStatus).subscribe({
+      next: () => {
+        user.status = newStatus;
+      },
+      error: (err) => {
+        alert('Failed to update status: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  deleteUser(user: UserBean) {
+    if (confirm(`Are you sure you want to delete user "${user.user_name}"?`)) {
+      this.crmService.deleteUser(user.id).subscribe({
+        next: () => {
+          this.usersList = this.usersList.filter(u => u.id !== user.id);
+        },
+        error: (err) => {
+          alert('Failed to delete user: ' + (err.error?.error || err.message));
+        }
+      });
+    }
   }
 
   onDragOver(event: DragEvent) {
