@@ -598,32 +598,56 @@ export class DashboardComponent implements OnInit {
       alert('Error: User profile not loaded yet.');
       return;
     }
-    this.isSavingSettings = true;
-    const updatedData = {
-      first_name: this.profileFirstName,
-      last_name: this.profileLastName,
-      email1: this.profileEmail
-    };
 
+    const updatedData: any = {};
+    let hasChanges = false;
+
+    if (this.profileFirstName !== (this.currentUserProfile.first_name || '')) {
+      updatedData.first_name = this.profileFirstName;
+      hasChanges = true;
+    }
+    if (this.profileLastName !== (this.currentUserProfile.last_name || '')) {
+      updatedData.last_name = this.profileLastName;
+      hasChanges = true;
+    }
+    if (this.profileEmail !== (this.currentUserProfile.email1 || '')) {
+      updatedData.email1 = this.profileEmail;
+      hasChanges = true;
+    }
+
+    if (!hasChanges) {
+      alert('Settings saved successfully (no changes detected)!');
+      return;
+    }
+
+    this.isSavingSettings = true;
     this.crmService.updateUser(this.currentUserProfile.id, updatedData).subscribe({
       next: () => {
         this.isSavingSettings = false;
+        
         // Update local object
-        this.currentUserProfile!.first_name = this.profileFirstName;
-        this.currentUserProfile!.last_name = this.profileLastName;
-        this.currentUserProfile!.email1 = this.profileEmail;
+        if (updatedData.first_name !== undefined) {
+          this.currentUserProfile!.first_name = updatedData.first_name;
+        }
+        if (updatedData.last_name !== undefined) {
+          this.currentUserProfile!.last_name = updatedData.last_name;
+        }
+        if (updatedData.email1 !== undefined) {
+          this.currentUserProfile!.email1 = updatedData.email1;
+        }
 
         // Persist to session storage
-        sessionStorage.setItem('profile_first_name', this.profileFirstName);
-        sessionStorage.setItem('profile_last_name', this.profileLastName);
-        sessionStorage.setItem('profile_email', this.profileEmail);
-        sessionStorage.setItem('user_name', `${this.profileFirstName} ${this.profileLastName}`);
+        sessionStorage.setItem('profile_first_name', this.currentUserProfile!.first_name || '');
+        sessionStorage.setItem('profile_last_name', this.currentUserProfile!.last_name || '');
+        sessionStorage.setItem('profile_email', this.currentUserProfile!.email1 || '');
+        sessionStorage.setItem('user_name', `${this.currentUserProfile!.first_name || ''} ${this.currentUserProfile!.last_name || ''}`.trim());
 
         alert('Settings saved successfully!');
       },
       error: (err) => {
         this.isSavingSettings = false;
-        alert('Failed to save settings: ' + (err.error?.error || err.message));
+        const msg = err.error?.error?.message || err.error?.message || (err.error ? JSON.stringify(err.error) : '') || err.message;
+        alert('Failed to save settings: ' + msg);
       }
     });
   }
