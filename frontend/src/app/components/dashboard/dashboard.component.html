@@ -627,15 +627,19 @@
           <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px; background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 8px;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;">Interface Mode</span>
-              <span style="font-size: 11px; color: #64748b;">Dark mode is locked by default.</span>
+              <span style="font-size: 11px; color: #64748b;">
+                {{ isDarkMode ? 'Dark Theme (Active)' : 'Light Theme (Active)' }}
+              </span>
             </div>
             
-            <!-- Toggle Switch (Not wired up yet) -->
-            <label class="theme-toggle-switch" style="position: relative; display: inline-block; width: 46px; height: 24px; cursor: not-allowed; opacity: 0.6;">
-              <input type="checkbox" checked disabled style="opacity: 0; width: 0; height: 0;">
-              <span class="theme-toggle-slider" style="position: absolute; cursor: not-allowed; top: 0; left: 0; right: 0; bottom: 0; background-color: #6366f1; border-radius: 24px; transition: .4s; box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);">
-                <span class="theme-toggle-knob" style="position: absolute; content: ''; height: 18px; width: 18px; left: 25px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; display: flex; align-items: center; justify-content: center;">
-                  <span class="material-icons-round" style="font-size: 12px; color: #6366f1; font-weight: 700;">dark_mode</span>
+            <!-- Wired Toggle Switch -->
+            <label class="theme-toggle-switch" style="position: relative; display: inline-block; width: 46px; height: 24px; cursor: pointer;">
+              <input type="checkbox" [checked]="isDarkMode" (change)="toggleTheme()" style="opacity: 0; width: 0; height: 0;">
+              <span class="theme-toggle-slider" [style.background-color]="isDarkMode ? '#6366f1' : '#94a3b8'" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; border-radius: 24px; transition: .4s; box-shadow: 0 0 8px rgba(99, 102, 241, 0.2);">
+                <span class="theme-toggle-knob" [style.left]="isDarkMode ? '25px' : '3px'" style="position: absolute; content: ''; height: 18px; width: 18px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; display: flex; align-items: center; justify-content: center;">
+                  <span class="material-icons-round" [style.color]="isDarkMode ? '#6366f1' : '#475569'" style="font-size: 12px; font-weight: 700;">
+                    {{ isDarkMode ? 'dark_mode' : 'light_mode' }}
+                  </span>
                 </span>
               </span>
             </label>
@@ -644,7 +648,7 @@
           <div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.1); border-radius: 8px;">
             <span class="material-icons-round" style="color: #818cf8; font-size: 20px;">info_outline</span>
             <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
-              <strong>Note:</strong> System theme selection is locked on the dark theme to preserve high-contrast visibility across corporate database audit records.
+              <strong>Note:</strong> Custom colors and gradients will adjust automatically to maintain premium high-contrast readability in your selected mode.
             </div>
           </div>
         </div>

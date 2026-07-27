@@ -154,3 +154,142 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.6;
   filter: blur(12px);
 }
+
+/* Light Mode Variables Override */
+body.light-theme {
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #cbd5e1;
+  
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #334155;
+  --color-text-muted: #64748b;
+  
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.8);
+  
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(225, 29, 72, 0.03) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(37, 99, 235, 0.03) 0%, transparent 40%);
+}
+
+/* Light Mode specific element overrides */
+body.light-theme .gradient-text {
+  background: linear-gradient(135deg, #0f172a 30%, var(--color-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.light-theme .btn-secondary {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.08);
+  color: #334155;
+}
+
+body.light-theme .btn-secondary:hover {
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+body.light-theme .btn-nav-icon {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.05);
+  color: #475569;
+}
+
+body.light-theme .btn-nav-icon:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+body.light-theme .btn-nav-icon.active {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #4f46e5;
+}
+
+body.light-theme .btn-nav-icon.active .material-icons-round {
+  color: #4f46e5;
+}
+
+body.light-theme .status-indicator {
+  background: rgba(15, 23, 42, 0.04);
+  border-color: rgba(15, 23, 42, 0.08);
+  color: #334155;
+}
+
+body.light-theme .status-indicator span {
+  color: #334155;
+}
+
+body.light-theme .account-row:hover {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+body.light-theme .accounts-table th {
+  color: #475569;
+  border-bottom: 2px solid rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .accounts-table td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  color: #334155;
+}
+
+body.light-theme .location-badge {
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme .web-link {
+  color: #2563eb;
+}
+
+body.light-theme .web-link:hover {
+  color: #1d4ed8;
+}
+
+body.light-theme .name-text {
+  color: #0f172a;
+}
+
+body.light-theme .settings-section-card {
+  background: rgba(15, 23, 42, 0.01) !important;
+  border-color: rgba(15, 23, 42, 0.05) !important;
+}
+
+body.light-theme .settings-section-card input {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+}
+
+body.light-theme .settings-section-card input:focus {
+  border-color: #6366f1 !important;
+}
+
+body.light-theme .modal-card {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.light-theme .modal-title {
+  color: #0f172a !important;
+}
+
+body.light-theme .detail-value {
+  color: #334155 !important;
+}
+
+body.light-theme .detail-value.highlighted-value {
+  color: #2563eb !important;
+}
+
+body.light-theme .dev-cli-terminal {
+  background: #0f172a !important;
+  color: #38bdf8 !important;
+}

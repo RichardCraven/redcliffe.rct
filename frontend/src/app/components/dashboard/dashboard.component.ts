@@ -47,6 +47,7 @@ export class DashboardComponent implements OnInit {
   profileFirstName = '';
   profileLastName = '';
   isSavingSettings = false;
+  isDarkMode = true;
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -276,6 +277,8 @@ export class DashboardComponent implements OnInit {
   constructor(private crmService: CrmService, private router: Router) {}
 
   ngOnInit() {
+    this.isDarkMode = localStorage.getItem('theme') !== 'light';
+    this.applyTheme();
     this.checkStatus();
     this.loadRecentAccounts();
     this.loadUserProfile();
@@ -623,6 +626,21 @@ export class DashboardComponent implements OnInit {
         alert('Failed to save settings: ' + (err.error?.error || err.message));
       }
     });
+  }
+
+  toggleTheme() {
+    this.isDarkMode = !this.isDarkMode;
+    localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
+    this.applyTheme();
+  }
+
+  applyTheme() {
+    const body = document.body;
+    if (this.isDarkMode) {
+      body.classList.remove('light-theme');
+    } else {
+      body.classList.add('light-theme');
+    }
   }
 
   onDragOver(event: DragEvent) {
