@@ -463,7 +463,7 @@ app.post('/api/users/:id/status', ensureUserSession, ensureAuthenticated, async 
   const { status } = req.body;
   try {
     const response = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
-      method: 'PATCH',
+      method: 'POST',
       headers: {
         'OAuth-Token': sessionToken,
         'Content-Type': 'application/json',
@@ -475,7 +475,7 @@ app.post('/api/users/:id/status', ensureUserSession, ensureAuthenticated, async 
     if (response.status === 401 || response.status === 403) {
       await authenticate();
       const retryResponse = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: {
           'OAuth-Token': sessionToken,
           'Content-Type': 'application/json',
@@ -506,7 +506,7 @@ app.patch('/api/users/:id', ensureUserSession, ensureAuthenticated, async (req, 
   const updateData = req.body;
   try {
     const response = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
-      method: 'PATCH',
+      method: 'POST',
       headers: {
         'OAuth-Token': sessionToken,
         'Content-Type': 'application/json',
@@ -518,7 +518,7 @@ app.patch('/api/users/:id', ensureUserSession, ensureAuthenticated, async (req, 
     if (response.status === 401 || response.status === 403) {
       await authenticate();
       const retryResponse = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: {
           'OAuth-Token': sessionToken,
           'Content-Type': 'application/json',
