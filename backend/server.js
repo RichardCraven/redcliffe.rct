@@ -766,6 +766,7 @@ app.get('/api/debug-env', (req, res) => {
     SPICE_CRM_URL: process.env.SPICE_CRM_URL,
     MS_CLIENT_ID: process.env.MS_CLIENT_ID,
     MS_REDIRECT_URI: process.env.MS_REDIRECT_URI,
+    MS_TENANT_ID: process.env.MS_TENANT_ID || 'common',
     MS_CLIENT_SECRET_SET: !!process.env.MS_CLIENT_SECRET
   });
 });
@@ -778,11 +779,12 @@ app.get('/api/debug-env', (req, res) => {
 app.get('/api/auth/outlook', (req, res) => {
   const clientId = process.env.MS_CLIENT_ID;
   const redirectUri = process.env.MS_REDIRECT_URI;
+  const tenantId = process.env.MS_TENANT_ID || 'common';
   if (!clientId || !redirectUri) {
     return res.status(400).json({ error: 'Microsoft Graph integration is not configured. Please add MS_CLIENT_ID and MS_REDIRECT_URI to .env.' });
   }
   const scopes = encodeURIComponent('offline_access user.read calendars.readwrite');
-  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&response_mode=query&scope=${scopes}`;
+  const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&response_mode=query&scope=${scopes}`;
   res.redirect(authUrl);
 });
 
@@ -792,13 +794,14 @@ app.get('/api/auth/outlook/callback', async (req, res) => {
   const clientId = process.env.MS_CLIENT_ID;
   const clientSecret = process.env.MS_CLIENT_SECRET;
   const redirectUri = process.env.MS_REDIRECT_URI;
+  const tenantId = process.env.MS_TENANT_ID || 'common';
 
   if (!code) {
     return res.status(400).send('Authorization code missing');
   }
 
   try {
-    const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({

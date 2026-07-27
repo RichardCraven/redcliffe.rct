@@ -687,7 +687,7 @@ export class DashboardComponent implements OnInit {
   }
 
   connectOutlook() {
-    const authUrl = `${this.crmService.getApiUrl()}/auth/outlook`;
+    const authUrl = `${this.crmService.getApiUrl()}/auth/outlook?t=${Date.now()}`;
     const width = 600;
     const height = 600;
     const left = window.screenX + (window.outerWidth - width) / 2;
