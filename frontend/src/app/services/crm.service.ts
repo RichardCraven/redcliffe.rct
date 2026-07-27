@@ -86,6 +86,10 @@ export class CrmService {
     ? 'http://localhost:3001/api'
     : '/api';
 
+  getApiUrl() {
+    return this.apiUrl;
+  }
+
   constructor(private http: HttpClient) {}
 
   private getHeaders() {
@@ -165,5 +169,13 @@ export class CrmService {
 
   deleteAllAccounts(password: string): Observable<{ success: boolean; deleted: number; failed: number }> {
     return this.http.post<{ success: boolean; deleted: number; failed: number }>(`${this.apiUrl}/accounts/delete-all`, { password }, this.getHeaders());
+  }
+
+  getOutlookStatus(userId: string): Observable<{ connected: boolean }> {
+    return this.http.get<{ connected: boolean }>(`${this.apiUrl}/users/${userId}/outlook-status`, this.getHeaders());
+  }
+
+  saveOutlookTokens(userId: string, tokens: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/users/${userId}/outlook-tokens`, { tokens }, this.getHeaders());
   }
 }

@@ -652,6 +652,53 @@
             </div>
           </div>
         </div>
+
+        <!-- Microsoft Outlook Calendar Integration -->
+        <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 20px;">
+          <div>
+            <h3 style="margin-top: 0; margin-bottom: 6px; font-size: 16px; font-weight: 600; color: #2563eb; display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-round" style="font-size: 18px; color: #2563eb;">calendar_month</span>
+              Outlook Calendar Sync
+            </h3>
+            <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;">Connect your corporate Microsoft account to sync your CRM meetings to Outlook.</p>
+          </div>
+
+          <!-- Connection Status Info -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px; background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;" class="name-text">Outlook Status</span>
+              <span style="font-size: 11px; display: flex; align-items: center; gap: 6px;" [style.color]="isOutlookConnected ? '#10b981' : '#64748b'">
+                <span style="width: 8px; height: 8px; border-radius: 50%; display: inline-block;" [style.background-color]="isOutlookConnected ? '#10b981' : '#64748b'"></span>
+                {{ isOutlookConnected ? 'Connected & Active' : 'Disconnected' }}
+              </span>
+            </div>
+
+            <!-- Connect / Disconnect Action Button -->
+            <button 
+              *ngIf="!isOutlookConnected" 
+              (click)="connectOutlook()" 
+              class="btn btn-secondary" 
+              style="padding: 8px 16px; font-size: 12px; border-color: rgba(37, 99, 235, 0.3); color: #3b82f6;"
+            >
+              Connect Outlook
+            </button>
+            <button 
+              *ngIf="isOutlookConnected" 
+              (click)="disconnectOutlook()" 
+              class="btn btn-danger" 
+              style="padding: 8px 16px; font-size: 12px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); color: #f87171;"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; background: rgba(37, 99, 235, 0.05); border: 1px solid rgba(37, 99, 235, 0.1); border-radius: 8px;">
+            <span class="material-icons-round" style="color: #3b82f6; font-size: 20px;">sync_alt</span>
+            <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
+              <strong>Note:</strong> Calendar events scheduled inside Redcliffe will automatically push to Outlook when sync is active.
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>

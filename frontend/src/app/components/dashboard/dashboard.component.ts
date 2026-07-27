@@ -48,6 +48,7 @@ export class DashboardComponent implements OnInit {
   profileLastName = '';
   isSavingSettings = false;
   isDarkMode = true;
+  isOutlookConnected = false;
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -160,6 +161,7 @@ export class DashboardComponent implements OnInit {
         this.profileFirstName = this.currentUserProfile.first_name || '';
         this.profileLastName = this.currentUserProfile.last_name || '';
         this.profileEmail = this.currentUserProfile.email1 || '';
+        this.loadOutlookStatus();
       } else {
         this.profileFirstName = sessionStorage.getItem('profile_first_name') || '';
         this.profileLastName = sessionStorage.getItem('profile_last_name') || '';
@@ -669,6 +671,69 @@ export class DashboardComponent implements OnInit {
       body.classList.remove('light-theme');
     } else {
       body.classList.add('light-theme');
+    }
+  }
+
+  loadOutlookStatus() {
+    if (!this.currentUserProfile) return;
+    this.crmService.getOutlookStatus(this.currentUserProfile.id).subscribe({
+      next: (res) => {
+        this.isOutlookConnected = res.connected;
+      },
+      error: () => {
+        this.isOutlookConnected = false;
+      }
+    });
+  }
+
+  connectOutlook() {
+    const authUrl = `${this.crmService.getApiUrl()}/auth/outlook`;
+    const width = 600;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    const popup = window.open(authUrl, 'ConnectOutlook', `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`);
+    
+    if (!popup) {
+      alert('Pop-up blocker active. Please allow pop-ups for this site to connect Outlook.');
+      return;
+    }
+
+    // Set up window message listener
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'MS_AUTH_SUCCESS') {
+        const tokens = event.data.tokens;
+        if (this.currentUserProfile) {
+          this.crmService.saveOutlookTokens(this.currentUserProfile.id, tokens).subscribe({
+            next: () => {
+              this.isOutlookConnected = true;
+              alert('Successfully linked Microsoft Outlook Calendar!');
+              window.removeEventListener('message', handleAuthMessage);
+            },
+            error: (err) => {
+              alert('Failed to save Outlook integration tokens: ' + (err.error?.error || err.message));
+            }
+          });
+        }
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+  }
+
+  disconnectOutlook() {
+    if (!this.currentUserProfile) return;
+    if (confirm('Are you sure you want to disconnect Microsoft Outlook calendar sync?')) {
+      this.crmService.saveOutlookTokens(this.currentUserProfile.id, null).subscribe({
+        next: () => {
+          this.isOutlookConnected = false;
+          alert('Outlook Calendar disconnected successfully.');
+        },
+        error: (err) => {
+          alert('Failed to disconnect: ' + (err.error?.error || err.message));
+        }
+      });
     }
   }
 
