@@ -1666,3 +1666,43 @@
   color: #cbd5e1;
 }
 
+/* User Profile Avatar Styles */
+.header-profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.header-profile-avatar:hover {
+  transform: scale(1.05) translateY(-0.5px);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.5);
+}
+
+.header-profile-icon {
+  font-size: 32px;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+  display: flex;
+  align-items: center;
+}
+
+.header-profile-icon:hover {
+  color: #94a3b8;
+  transform: scale(1.05);
+}
+

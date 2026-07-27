@@ -144,6 +144,10 @@ export class CrmService {
     return this.http.post<any>(`${this.apiUrl}/users/${id}/status`, { status }, this.getHeaders());
   }
 
+  updateUser(id: string, updateData: any): Observable<any> {
+    return this.http.patch<any>(`${this.apiUrl}/users/${id}`, updateData, this.getHeaders());
+  }
+
   deleteAllAccounts(password: string): Observable<{ success: boolean; deleted: number; failed: number }> {
     return this.http.post<{ success: boolean; deleted: number; failed: number }>(`${this.apiUrl}/accounts/delete-all`, { password }, this.getHeaders());
   }

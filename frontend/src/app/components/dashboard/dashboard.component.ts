@@ -39,7 +39,14 @@ export class DashboardComponent implements OnInit {
   isLoadingReports = false;
   reportsSearchQuery = '';
 
-  activeView: 'accounts' | 'meetings' | 'users' | 'reports' = 'accounts';
+  activeView: 'accounts' | 'meetings' | 'users' | 'reports' | 'settings' = 'accounts';
+
+  // Profile and Settings State
+  currentUserProfile: UserBean | null = null;
+  profileEmail = '';
+  profileFirstName = '';
+  profileLastName = '';
+  isSavingSettings = false;
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -147,8 +154,16 @@ export class DashboardComponent implements OnInit {
         }, 50);
       }
     } else if (appName === 'Settings') {
-      this.showDevConsole = true;
-      setTimeout(() => this.scrollToBottom(), 50);
+      this.activeView = 'settings';
+      if (this.currentUserProfile) {
+        this.profileFirstName = this.currentUserProfile.first_name || '';
+        this.profileLastName = this.currentUserProfile.last_name || '';
+        this.profileEmail = this.currentUserProfile.email1 || '';
+      } else {
+        this.profileFirstName = sessionStorage.getItem('profile_first_name') || '';
+        this.profileLastName = sessionStorage.getItem('profile_last_name') || '';
+        this.profileEmail = sessionStorage.getItem('profile_email') || '';
+      }
     } else {
       alert(`Navigating to mock application: "${appName}". This screen will be populated based on the ${this.currentRole} metadata definitions.`);
     }
@@ -263,6 +278,7 @@ export class DashboardComponent implements OnInit {
   ngOnInit() {
     this.checkStatus();
     this.loadRecentAccounts();
+    this.loadUserProfile();
   }
 
   logout() {
@@ -535,6 +551,78 @@ export class DashboardComponent implements OnInit {
         }
       });
     }
+  }
+
+  loadUserProfile() {
+    const currentUsername = sessionStorage.getItem('username') || '';
+    if (!currentUsername) return;
+
+    this.crmService.getRecentUsers(100).subscribe({
+      next: (res) => {
+        const found = (res.list || []).find(u => u.user_name.toLowerCase() === currentUsername.toLowerCase());
+        if (found) {
+          this.currentUserProfile = found;
+          sessionStorage.setItem('profile_first_name', found.first_name || '');
+          sessionStorage.setItem('profile_last_name', found.last_name || '');
+          sessionStorage.setItem('profile_email', found.email1 || '');
+        }
+      }
+    });
+  }
+
+  getUserInitials(): string {
+    if (this.currentUserProfile) {
+      const f = this.currentUserProfile.first_name || '';
+      const l = this.currentUserProfile.last_name || '';
+      if (f || l) {
+        return ((f ? f[0] : '') + (l ? l[0] : '')).toUpperCase();
+      }
+    }
+    const displayName = sessionStorage.getItem('user_name') || '';
+    if (displayName) {
+      const parts = displayName.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      } else if (parts.length === 1 && parts[0].length >= 1) {
+        return parts[0][0].toUpperCase();
+      }
+    }
+    return '';
+  }
+
+  saveSettings() {
+    if (!this.currentUserProfile) {
+      alert('Error: User profile not loaded yet.');
+      return;
+    }
+    this.isSavingSettings = true;
+    const updatedData = {
+      first_name: this.profileFirstName,
+      last_name: this.profileLastName,
+      email1: this.profileEmail
+    };
+
+    this.crmService.updateUser(this.currentUserProfile.id, updatedData).subscribe({
+      next: () => {
+        this.isSavingSettings = false;
+        // Update local object
+        this.currentUserProfile!.first_name = this.profileFirstName;
+        this.currentUserProfile!.last_name = this.profileLastName;
+        this.currentUserProfile!.email1 = this.profileEmail;
+
+        // Persist to session storage
+        sessionStorage.setItem('profile_first_name', this.profileFirstName);
+        sessionStorage.setItem('profile_last_name', this.profileLastName);
+        sessionStorage.setItem('profile_email', this.profileEmail);
+        sessionStorage.setItem('user_name', `${this.profileFirstName} ${this.profileLastName}`);
+
+        alert('Settings saved successfully!');
+      },
+      error: (err) => {
+        this.isSavingSettings = false;
+        alert('Failed to save settings: ' + (err.error?.error || err.message));
+      }
+    });
   }
 
   onDragOver(event: DragEvent) {

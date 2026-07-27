@@ -500,6 +500,49 @@ app.post('/api/users/:id/status', ensureUserSession, ensureAuthenticated, async 
   }
 });
 
+// Endpoint to update a specific user's attributes (e.g., first/last name, email)
+app.patch('/api/users/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  const updateData = req.body;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(updateData)
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(`Error updating user ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to delete all accounts from SpiceCRM (requires admin password verification)
 app.post('/api/accounts/delete-all', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const { password } = req.body;
