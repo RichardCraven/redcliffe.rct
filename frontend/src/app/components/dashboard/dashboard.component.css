@@ -1716,6 +1716,7 @@
 /* Collapsible CSV Import Panel Styles */
 .panel-import {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
 }
 
 .panel-import.collapsed {
@@ -1782,6 +1783,23 @@
   color: #fff;
   border-color: #3b82f6;
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+}
+
+/* Fade in elements with a slight delay when panel is expanded */
+.panel-import > *:not(.collapsed-import-container) {
+  animation: fadeInAfterExpand 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInAfterExpand {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 
