@@ -759,6 +759,127 @@ app.post('/api/import', ensureUserSession, ensureAuthenticated, upload.single('f
   });
 });
 
+// ==========================================
+// MICROSOFT OUTLOOK GRAPH API INTEGRATION ROUTES
+// ==========================================
+
+// 1. Auth Initiate
+app.get('/api/auth/outlook', (req, res) => {
+  const clientId = process.env.MS_CLIENT_ID;
+  const redirectUri = process.env.MS_REDIRECT_URI;
+  if (!clientId || !redirectUri) {
+    return res.status(400).json({ error: 'Microsoft Graph integration is not configured. Please add MS_CLIENT_ID and MS_REDIRECT_URI to .env.' });
+  }
+  const scopes = encodeURIComponent('offline_access user.read calendars.readwrite');
+  const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${clientId}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&response_mode=query&scope=${scopes}`;
+  res.redirect(authUrl);
+});
+
+// 2. Auth Callback
+app.get('/api/auth/outlook/callback', async (req, res) => {
+  const { code } = req.query;
+  const clientId = process.env.MS_CLIENT_ID;
+  const clientSecret = process.env.MS_CLIENT_SECRET;
+  const redirectUri = process.env.MS_REDIRECT_URI;
+
+  if (!code) {
+    return res.status(400).send('Authorization code missing');
+  }
+
+  try {
+    const tokenResponse = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      })
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (!tokenResponse.ok) {
+      throw new Error(tokenData.error_description || 'Token exchange failed');
+    }
+
+    res.send(`
+      <html>
+        <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: #f8fafc;">
+          <h2 style="color: #38bdf8;">Outlook Connected Successfully!</h2>
+          <p>This window will close automatically.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ type: 'MS_AUTH_SUCCESS', tokens: ${JSON.stringify(tokenData)} }, '*');
+            }
+            setTimeout(() => window.close(), 1500);
+          </script>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('OAuth Callback Error:', error.message);
+    res.status(500).send('Authentication Error: ' + error.message);
+  }
+});
+
+// 3. Get connection status for a user
+app.get('/api/users/:id/outlook-status', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userRes = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+    });
+    if (!userRes.ok) return res.status(userRes.status).json({ error: 'Failed to retrieve user' });
+    const userData = await userRes.json();
+    const description = userData.description || '';
+    const connected = description.includes('[OUTLOOK_TOKENS]');
+    res.json({ connected });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Save/Delete connection tokens for a user
+app.post('/api/users/:id/outlook-tokens', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  const { tokens } = req.body;
+  try {
+    const userRes = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+    });
+    if (!userRes.ok) return res.status(userRes.status).json({ error: 'Failed to retrieve user' });
+    const userData = await userRes.json();
+    let description = userData.description || '';
+
+    if (tokens) {
+      const tokenString = `[OUTLOOK_TOKENS]: ${JSON.stringify(tokens)}`;
+      if (description.includes('[OUTLOOK_TOKENS]')) {
+        description = description.replace(/\[OUTLOOK_TOKENS\]:\s*(\{.*\}|null)/, tokenString);
+      } else {
+        description = (description + '\n\n' + tokenString).trim();
+      }
+    } else {
+      description = description.replace(/\[OUTLOOK_TOKENS\]:\s*(\{.*\}|null)/, '').trim();
+    }
+
+    const updateRes = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
+      method: 'POST',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ description })
+    });
+    const data = await updateRes.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Redcliffe SpiceCRM proxy server running on http://localhost:${port}`);
 });
