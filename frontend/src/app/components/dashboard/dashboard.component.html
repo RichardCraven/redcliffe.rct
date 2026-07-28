@@ -2,15 +2,14 @@
   <!-- Top Navigation Header -->
   <header class="main-header glass-panel">
     <div class="brand">
+      <span class="role-badge-borderless" [class.sales]="currentRole === 'Sales'">{{ currentRole }}</span>
       <button (click)="toggleAppLauncher()" class="btn-apps" title="App Launcher">
         <span class="material-icons-round">apps</span>
       </button>
       <img src="assets/redcliffe_logo.png" alt="Redcliffe Logo" class="brand-logo-img">
       <div class="brand-text">
         <h1 class="gradient-text">Redcliffe</h1>
-        <!-- <p>SpiceCRM Integration Engine</p> -->
       </div>
-      <span class="role-badge" [ngClass]="{'sales': currentRole === 'Sales'}">{{ currentRole }} View</span>
     </div>
 
     <!-- Header Navigation Buttons -->

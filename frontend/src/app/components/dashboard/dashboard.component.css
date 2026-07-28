@@ -1040,22 +1040,16 @@
 }
 
 /* Active Role Badge in Header */
-.role-badge {
-  background: rgba(99, 102, 241, 0.15);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+.role-badge-borderless {
   color: #a5b4fc;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-left: 12px;
+  letter-spacing: 0.12em;
+  user-select: none;
 }
 
-.role-badge.sales {
-  background: rgba(14, 165, 233, 0.15);
-  border: 1px solid rgba(14, 165, 233, 0.3);
+.role-badge-borderless.sales {
   color: #38bdf8;
 }
 
