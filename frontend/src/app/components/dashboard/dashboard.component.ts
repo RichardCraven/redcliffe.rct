@@ -52,7 +52,7 @@ export class DashboardComponent implements OnInit {
   isOutlookConnected = false;
   showAssignedColumn = false;
   showReportAssignedColumn = false;
-  isImportPanelCollapsed = false;
+  isImportPanelCollapsed = true;
 
   // App Launcher & Role State
   showAppLauncher = false;
