@@ -100,20 +100,30 @@
 
 /* Dashboard Grid */
 .dashboard-grid {
-  display: grid;
-  grid-template-columns: 338px 1fr;
+  display: flex;
   gap: 24px;
   flex: 1;
-  transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.dashboard-grid.collapsed-sidebar {
-  grid-template-columns: 64px 1fr;
+.panel-import {
+  width: 338px;
+  min-width: 338px;
+  overflow: hidden;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
+}
+
+.panel-crm-records {
+  flex: 1;
+  min-width: 0;
 }
 
 @media (max-width: 1024px) {
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+  .panel-import {
+    width: 100% !important;
+    min-width: 100% !important;
   }
 }
 
@@ -1708,12 +1718,9 @@
 }
 
 /* Collapsible CSV Import Panel Styles */
-.panel-import {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-}
-
 .panel-import.collapsed {
+  width: 64px;
+  min-width: 64px;
   padding: 24px 8px;
   align-items: center;
   overflow: hidden;
