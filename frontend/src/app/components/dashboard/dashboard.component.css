@@ -109,7 +109,7 @@
   width: 338px;
   min-width: 338px;
   overflow: hidden;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .panel-crm-records {
@@ -1755,7 +1755,7 @@
   opacity: 0.55;
   margin: auto 0;
   user-select: none;
-  transition: opacity 0.2s ease, color 0.2s ease;
+  transition: opacity 0.15s ease, color 0.15s ease;
 }
 
 .panel-import.collapsed:hover .collapsed-vertical-text {
@@ -1774,7 +1774,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   margin-top: auto;
   padding: 0;
 }

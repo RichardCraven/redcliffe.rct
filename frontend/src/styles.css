@@ -147,7 +147,7 @@ h1, h2, h3, h4, h5, h6 {
   z-index: -1;
   opacity: 0.3;
   filter: blur(8px);
-  transition: var(--transition-smooth);
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1), filter 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glow-effect:hover::after {
