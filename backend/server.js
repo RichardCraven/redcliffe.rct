@@ -191,6 +191,44 @@ app.get('/api/accounts', ensureUserSession, ensureAuthenticated, async (req, res
   }
 });
 
+// Endpoint to fetch a single account from SpiceCRM
+app.get('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Accounts/${id}`, {
+      method: 'GET',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Accounts/${id}`, {
+        method: 'GET',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(`Error fetching account ${id}:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint to fetch recent meetings from SpiceCRM
 app.get('/api/meetings', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const limit = req.query.limit || 100;
@@ -225,6 +263,83 @@ app.get('/api/meetings', ensureUserSession, ensureAuthenticated, async (req, res
     res.json(data);
   } catch (error) {
     console.error('Error fetching meetings:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to create a new meeting in SpiceCRM
+app.post('/api/meetings', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const meetingData = req.body;
+  const uuid = crypto.randomUUID();
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Meetings/${uuid}`, {
+      method: 'POST',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(meetingData)
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Meetings/${uuid}`, {
+        method: 'POST',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(meetingData)
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error creating meeting:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+// Endpoint to fetch a single meeting from SpiceCRM
+app.get('/api/meetings/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await fetch(`${spiceCrmUrl}/module/Meetings/${id}`, {
+      method: 'GET',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      const retryResponse = await fetch(`${spiceCrmUrl}/module/Meetings/${id}`, {
+        method: 'GET',
+        headers: {
+          'OAuth-Token': sessionToken,
+          'Accept': 'application/json'
+        }
+      });
+      const data = await retryResponse.json();
+      return res.json(data);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(`Error fetching meeting ${id}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -993,6 +1108,37 @@ app.get('/api/outlook/events', ensureUserSession, ensureAuthenticated, async (re
     res.json(data.value || []);
   } catch (error) {
     console.error('Failed to retrieve Outlook events:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5.1 Get Single Outlook Calendar Event
+app.get('/api/outlook/events/:id', ensureUserSession, ensureAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'userId query parameter is required' });
+
+  try {
+    const accessToken = await getOutlookAccessToken(userId);
+    if (!accessToken) {
+      return res.status(400).json({ error: 'Outlook calendar sync is not connected for this user.' });
+    }
+
+    const graphRes = await fetch(`https://graph.microsoft.com/v1.0/me/events/${id}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Prefer': 'outlook.timezone="Pacific Standard Time"'
+      }
+    });
+
+    const data = await graphRes.json();
+    if (!graphRes.ok) {
+      throw new Error(data.error?.message || 'Failed to fetch Outlook event');
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error(`Failed to retrieve Outlook event ${id}:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });

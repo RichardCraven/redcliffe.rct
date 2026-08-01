@@ -127,6 +127,10 @@ export class CrmService {
     return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}`, this.getHeaders());
   }
 
+  getAccount(id: string): Observable<AccountBean> {
+    return this.http.get<AccountBean>(`${this.apiUrl}/accounts/${id}`, this.getHeaders());
+  }
+
   getRecentMeetings(limit: number = 100): Observable<{ list: MeetingBean[] }> {
     return this.http.get<{ list: MeetingBean[] }>(`${this.apiUrl}/meetings?limit=${limit}`, this.getHeaders());
   }
@@ -187,5 +191,17 @@ export class CrmService {
 
   createOutlookEvent(userId: string, eventData: any): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/outlook/events`, { userId, eventData }, this.getHeaders());
+  }
+
+  createMeeting(meetingData: any): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/meetings`, meetingData, this.getHeaders());
+  }
+
+  getMeeting(id: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/meetings/${id}`, this.getHeaders());
+  }
+
+  getOutlookEvent(id: string, userId: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/outlook/events/${id}?userId=${userId}`, this.getHeaders());
   }
 }

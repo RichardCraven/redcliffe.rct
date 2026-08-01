@@ -206,95 +206,543 @@
     </section>
 
     <!-- Right Panel: Recent Accounts in CRM -->
-    <section *ngIf="activeView === 'accounts'" class="panel-crm-records glass-panel">
-      <div class="panel-header" style="justify-content: space-between;">
-        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
-          <span class="material-icons-round header-icon">table_chart</span>
-          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">SpiceCRM Recent Clients</h2>
-          
-          <!-- Search Bar -->
-          <div class="meetings-search-box">
-            <span class="material-icons-round">search</span>
-            <input 
-              type="text" 
-              [(ngModel)]="accountsSearchQuery" 
-              placeholder="Search clients..."
-              class="meetings-search-input"
-            >
-          </div>
-        </div>
+    <section *ngIf="activeView === 'accounts'" class="panel-crm-records glass-panel" style="display: flex; flex-direction: column;">
+      <!-- Accounts Tab Bar -->
+      <div class="accounts-tab-bar">
+        <button 
+          (click)="setActiveAccountTab(null)" 
+          class="account-tab-btn" 
+          [class.active]="activeAccountTabId === null"
+        >
+          <span class="material-icons-round" style="font-size: 16px;">people</span>
+          All Clients
+        </button>
         
-        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;" *ngIf="recentAccounts.length > 0">
-            {{ filteredAccounts.length }} of {{ recentAccounts.length }} Items
-          </span>
-          <button (click)="loadRecentAccounts()" class="btn btn-secondary btn-icon" title="Refresh client list" [disabled]="isLoadingAccounts" style="margin-left: 8px;">
-            <span class="material-icons-round" [class.spinning]="isLoadingAccounts">sync</span>
+        <div *ngFor="let tab of openAccountTabs" class="account-tab-wrapper">
+          <button 
+            (click)="setActiveAccountTab(tab.id)" 
+            class="account-tab-btn" 
+            [class.active]="activeAccountTabId === tab.id"
+          >
+            <span class="material-icons-round" style="font-size: 16px;">
+              {{ tab.type === 'meeting' ? 'calendar_month' : 'business' }}
+            </span>
+            {{ tab.name }}
+          </button>
+          <button (click)="closeAccountTab(tab.id, $event)" class="account-tab-close-btn" title="Close Tab">
+            <span class="material-icons-round" style="font-size: 14px;">close</span>
           </button>
         </div>
       </div>
 
-      <!-- Accounts Table -->
-      <div class="table-container">
-        <div *ngIf="isLoadingAccounts && recentAccounts.length === 0" class="loading-state">
-          <div class="spinner"></div>
-          <span>Loading client database...</span>
-        </div>
-        
-        <div *ngIf="!isLoadingAccounts && recentAccounts.length === 0" class="empty-state">
-          <span class="material-icons-round empty-icon">assignment_ind</span>
-          <h3>No Client Records Found</h3>
-          <p>Import your CSV database to populate the CRM.</p>
+      <!-- VIEW 1: All Clients (when activeAccountTabId is null) -->
+      <ng-container *ngIf="activeAccountTabId === null">
+        <div class="panel-header" style="justify-content: space-between;">
+          <div class="header-left" style="display: flex; align-items: center; width: 100%;">
+            <span class="material-icons-round header-icon">table_chart</span>
+            <h2 style="font-size: 20px; font-weight: 700; margin: 0;">SpiceCRM Recent Clients</h2>
+            
+            <!-- Search Bar -->
+            <div class="meetings-search-box">
+              <span class="material-icons-round">search</span>
+              <input 
+                type="text" 
+                [(ngModel)]="accountsSearchQuery" 
+                placeholder="Search clients..."
+                class="meetings-search-input"
+              >
+            </div>
+          </div>
+          
+          <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;" *ngIf="recentAccounts.length > 0">
+              {{ filteredAccounts.length }} of {{ recentAccounts.length }} Items
+            </span>
+            <button (click)="loadRecentAccounts()" class="btn btn-secondary btn-icon" title="Refresh client list" [disabled]="isLoadingAccounts" style="margin-left: 8px;">
+              <span class="material-icons-round" [class.spinning]="isLoadingAccounts">sync</span>
+            </button>
+          </div>
         </div>
 
-        <div *ngIf="!isLoadingAccounts && recentAccounts.length > 0 && filteredAccounts.length === 0" class="empty-state">
-          <span class="material-icons-round empty-icon">search_off</span>
-          <h3>No Matching Clients</h3>
-          <p>Try refining your search query.</p>
-        </div>
+        <!-- Accounts Table -->
+        <div class="table-container">
+          <div *ngIf="isLoadingAccounts && recentAccounts.length === 0" class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading client database...</span>
+          </div>
+          
+          <div *ngIf="!isLoadingAccounts && recentAccounts.length === 0" class="empty-state">
+            <span class="material-icons-round empty-icon">assignment_ind</span>
+            <h3>No Client Records Found</h3>
+            <p>Import your CSV database to populate the CRM.</p>
+          </div>
 
-        <table *ngIf="filteredAccounts.length > 0" class="accounts-table">
-          <thead>
-            <tr>
-              <th>Client Name</th>
-              <th>Email</th>
-              <th>Website</th>
-              <th>Location</th>
-              <th *ngIf="currentRole === 'Admin'" style="width: 80px; text-align: center;">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let acc of filteredAccounts" class="account-row">
-              <td class="cell-name">
-                <span class="material-icons-round avatar">business</span>
-                <div class="cell-text">
-                  <span class="name-text">{{ acc.name }}</span>
-                  <span class="industry-badge" *ngIf="acc.industry">{{ acc.industry }}</span>
+          <div *ngIf="!isLoadingAccounts && recentAccounts.length > 0 && filteredAccounts.length === 0" class="empty-state">
+            <span class="material-icons-round empty-icon">search_off</span>
+            <h3>No Matching Clients</h3>
+            <p>Try refining your search query.</p>
+          </div>
+
+          <table *ngIf="filteredAccounts.length > 0" class="accounts-table">
+            <thead>
+              <tr>
+                <th>Client Name</th>
+                <th>Email</th>
+                <th>Website</th>
+                <th>Location</th>
+                <th *ngIf="currentRole === 'Admin'" style="width: 80px; text-align: center;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let acc of filteredAccounts" class="account-row">
+                <td class="cell-name">
+                  <span class="material-icons-round avatar">business</span>
+                  <div class="cell-text">
+                    <a [href]="getAccountCrmUrl(acc.id)" (click)="openAccountTab(acc); $event.preventDefault();" class="client-detail-link name-text">
+                      {{ acc.name }}
+                    </a>
+                    <span class="industry-badge" *ngIf="acc.industry">{{ acc.industry }}</span>
+                  </div>
+                </td>
+                <td>{{ acc.email1 || '—' }}</td>
+                <td>
+                  <a *ngIf="acc.website" [href]="acc.website" target="_blank" class="web-link">
+                    <span>{{ acc.website.replace('https://', '').replace('http://', '').replace('www.', '') }}</span>
+                    <span class="material-icons-round link-icon">open_in_new</span>
+                  </a>
+                  <span *ngIf="!acc.website">—</span>
+                </td>
+                <td>
+                  <span class="location-badge" *ngIf="acc.shipping_address_city">
+                    {{ acc.shipping_address_city }}, {{ acc.shipping_address_state || 'Canada' }}
+                  </span>
+                  <span *ngIf="!acc.shipping_address_city">—</span>
+                </td>
+                <td *ngIf="currentRole === 'Admin'" style="text-align: center;">
+                  <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
+                    <span class="material-icons-round">delete</span>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </ng-container>
+
+      <!-- VIEW 2: Account Detail (when activeAccountTabId is not null) -->
+      <ng-container *ngIf="activeAccountTabId !== null">
+        <div *ngFor="let tab of openAccountTabs">
+          <div *ngIf="activeAccountTabId === tab.id" class="account-detail-view animate-fade-in">
+            
+            <!-- CASE A: MEETING WORKSPACE DETAILS -->
+            <ng-container *ngIf="tab.type === 'meeting'">
+              <!-- Meeting Details Header Card -->
+              <div class="account-detail-header-card" style="border-left: 4px solid var(--color-secondary);">
+                <div class="header-avatar" style="background: rgba(59, 130, 246, 0.1); color: var(--color-secondary);">
+                  <span class="material-icons-round">calendar_month</span>
                 </div>
-              </td>
-              <td>{{ acc.email1 || '—' }}</td>
-              <td>
-                <a *ngIf="acc.website" [href]="acc.website" target="_blank" class="web-link">
-                  <span>{{ acc.website.replace('https://', '').replace('http://', '').replace('www.', '') }}</span>
-                  <span class="material-icons-round link-icon">open_in_new</span>
-                </a>
-                <span *ngIf="!acc.website">—</span>
-              </td>
-              <td>
-                <span class="location-badge" *ngIf="acc.shipping_address_city">
-                  {{ acc.shipping_address_city }}, {{ acc.shipping_address_state || 'Canada' }}
-                </span>
-                <span *ngIf="!acc.shipping_address_city">—</span>
-              </td>
-              <td *ngIf="currentRole === 'Admin'" style="text-align: center;">
-                <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
-                  <span class="material-icons-round">delete</span>
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                <div class="header-info">
+                  <span class="header-type-label" style="color: var(--color-secondary);">MEETING</span>
+                  <h2 class="header-title">{{ tab.meeting.name }}</h2>
+                  <span class="header-subtitle" style="font-size: 11px; opacity: 0.85; color: var(--color-text-secondary);">
+                    Assigned to: <strong style="color: var(--color-text-primary);">{{ getUserDisplayName(tab.meeting.assigned_user_name) }}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Detail Grid Layout -->
+              <div class="account-detail-grid">
+                <!-- Left Column: Details & Relationships (70%) -->
+                <div class="detail-column-left">
+                  <!-- Tabs navigation inside detail card (DETAILS, RELATED) -->
+                  <div class="detail-sub-tabs">
+                    <button (click)="tab.activeSubTab = 'details'" class="sub-tab-btn" [class.active]="tab.activeSubTab !== 'related'">Details</button>
+                    <button (click)="tab.activeSubTab = 'related'" class="sub-tab-btn" [class.active]="tab.activeSubTab === 'related'">Related Items</button>
+                  </div>
+
+                  <!-- DETAILS SUB-TAB CONTENT -->
+                  <div *ngIf="tab.activeSubTab !== 'related'" class="sub-tab-content">
+                    <div class="info-group">
+                      <div class="info-row">
+                        <div class="info-item">
+                          <span class="info-label">Subject</span>
+                          <span class="info-value">{{ tab.meeting.name }}</span>
+                        </div>
+                        <div class="info-item">
+                          <span class="info-label">Status</span>
+                          <span class="status-badge" [ngClass]="{
+                            'status-held': tab.meeting.status === 'Held' || tab.meeting.status === 'held',
+                            'status-planned': tab.meeting.status === 'Planned' || tab.meeting.status === 'planned',
+                            'status-notheld': tab.meeting.status === 'Not Held' || tab.meeting.status === 'notheld'
+                          }" style="width: fit-content;">
+                            {{ tab.meeting.status }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div class="info-row">
+                        <div class="info-item">
+                          <span class="info-label">Start Date & Time</span>
+                          <span class="info-value">{{ tab.meeting.date_start ? formatMeetingTime(tab.meeting.date_start, tab.meeting.date_end) : 'No Start Time' }}</span>
+                        </div>
+                        <div class="info-item">
+                          <span class="info-label">Location</span>
+                          <span class="info-value">{{ tab.meeting.location || tab.meeting.parent_name || 'Online / Not Specified' }}</span>
+                        </div>
+                      </div>
+
+                      <div class="info-row">
+                        <div class="info-item">
+                          <span class="info-label">Related To</span>
+                          <span class="info-value">
+                            <span *ngIf="tab.meeting.parent_name && tab.meeting.parent_type === 'Accounts'">
+                              <a href="javascript:void(0)" (click)="openAccountTabById(tab.meeting.parent_id)" style="color: var(--color-primary-hover); text-decoration: none; font-weight: 600;">
+                                {{ tab.meeting.parent_name }}
+                              </a> (Account)
+                            </span>
+                            <span *ngIf="tab.meeting.parent_name && tab.meeting.parent_type !== 'Accounts'">
+                              {{ tab.meeting.parent_name }} ({{ tab.meeting.parent_type }})
+                            </span>
+                            <span *ngIf="!tab.meeting.parent_name">—</span>
+                          </span>
+                        </div>
+                        <div class="info-item">
+                          <span class="info-label">Outlook Calendar Sync</span>
+                          <span class="info-value" style="display: flex; align-items: center; gap: 4px;">
+                            <span class="material-icons-round" [style.color]="tab.meeting.isOutlook ? '#22c55e' : '#64748b'" style="font-size: 16px;">
+                              {{ tab.meeting.isOutlook ? 'cloud_done' : 'cloud_off' }}
+                            </span>
+                            {{ tab.meeting.isOutlook ? 'Synced with Microsoft Outlook' : 'Internal CRM Record Only' }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Description / Agenda Notes -->
+                    <div class="detail-section-title" style="margin-top: 24px;">Agenda & Description</div>
+                    <div class="info-group" style="padding: 16px; background: rgba(255, 255, 255, 0.02); border-radius: var(--border-radius-sm); border: 1px solid var(--glass-border); line-height: 1.6;">
+                      <p style="margin: 0; font-size: 13px; color: var(--color-text-secondary); white-space: pre-wrap;" *ngIf="tab.meeting.description">
+                        {{ tab.meeting.description }}
+                      </p>
+                      <p style="margin: 0; font-size: 13px; color: var(--color-text-muted); font-style: italic;" *ngIf="!tab.meeting.description">
+                        No meeting description or agenda has been entered.
+                      </p>
+                    </div>
+
+                    <!-- Participants Section -->
+                    <div class="detail-section-title" style="margin-top: 24px;">Participants</div>
+                    <div class="table-container" style="margin-top: 10px; border-radius: var(--border-radius-sm); border: 1px solid var(--glass-border); overflow: hidden;">
+                      <table class="crm-table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Email Address</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td class="cell-name">
+                              <span class="material-icons-round avatar" style="background: rgba(14, 165, 233, 0.1); color: #0ea5e9;">person</span>
+                              <span class="name-text">{{ getUserDisplayName(tab.meeting.assigned_user_name) }}</span>
+                            </td>
+                            <td>
+                              <span class="status-badge status-held" style="width: fit-content;">Accepted</span>
+                            </td>
+                            <td>
+                              <span class="info-value font-mono" style="font-size: 12px; opacity: 0.85;">
+                                {{ tab.meeting.isOutlook ? 'outlook-organizer@redcliffe.rct' : 'administrator@spicecrm.pfcd.ca' }}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr *ngIf="tab.meeting.parent_name && tab.meeting.parent_type === 'Accounts'">
+                            <td class="cell-name">
+                              <span class="material-icons-round avatar" style="background: rgba(34, 197, 94, 0.1); color: #22c55e;">business</span>
+                              <span class="name-text">{{ tab.meeting.parent_name }}</span>
+                            </td>
+                            <td>
+                              <span class="status-badge status-planned" style="width: fit-content;">Invited</span>
+                            </td>
+                            <td>
+                              <span class="info-value font-mono" style="font-size: 12px; opacity: 0.85;">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- RELATED ITEMS SUB-TAB CONTENT -->
+                  <div *ngIf="tab.activeSubTab === 'related'" class="sub-tab-content">
+                    <div class="empty-state-container" style="padding: 40px; text-align: center; background: rgba(255, 255, 255, 0.01); border-radius: var(--border-radius-sm); border: 1px dashed var(--glass-border);">
+                      <span class="material-icons-round" style="font-size: 48px; color: var(--color-text-muted); margin-bottom: 12px;">link_off</span>
+                      <h4 style="margin: 0 0 6px 0; font-size: 14px; font-weight: 600;">No Linked Campaigns or Opportunities</h4>
+                      <p style="margin: 0; font-size: 12px; color: var(--color-text-muted);">This meeting is not associated with any active marketing campaigns or sales opportunities.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Column: Metadata & Actions (30%) -->
+                <div class="detail-column-right">
+                  <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                    <h3 style="margin: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">
+                      Meeting Metadata
+                    </h3>
+                    <div class="meta-list" style="display: flex; flex-direction: column; gap: 12px;">
+                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Date Entered</span>
+                        <span class="meta-value" style="font-size: 12px; font-weight: 500;">
+                          {{ tab.meeting.date_entered || tab.meeting.date_start || '2026-07-31 10:00:00' }}
+                        </span>
+                      </div>
+                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Date Modified</span>
+                        <span class="meta-value" style="font-size: 12px; font-weight: 500;">
+                          {{ tab.meeting.date_modified || tab.meeting.date_start || '2026-07-31 10:00:00' }}
+                        </span>
+                      </div>
+                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Meeting ID</span>
+                        <span class="meta-value font-mono select-all" style="font-size: 11px; word-break: break-all; opacity: 0.8;">
+                          {{ tab.meeting.id }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
+
+            <!-- CASE B: ORIGINAL ACCOUNT WORKSPACE DETAILS -->
+            <ng-container *ngIf="tab.type !== 'meeting'">
+              <!-- Account Details Header Card -->
+              <div class="account-detail-header-card">
+              <div class="header-avatar">
+                <span class="material-icons-round">business</span>
+              </div>
+              <div class="header-info">
+                <span class="header-type-label">ACCOUNT</span>
+                <h2 class="header-title">{{ tab.account.name }}</h2>
+                <span class="header-subtitle" *ngIf="tab.account.industry">{{ tab.account.industry }}</span>
+              </div>
+            </div>
+
+            <!-- Detail Grid Layout -->
+            <div class="account-detail-grid">
+              <!-- Left Column: Details & Relationships (70%) -->
+              <div class="detail-column-left">
+                <!-- Tabs navigation inside detail card (RELATED, DETAILS) -->
+                <div class="detail-sub-tabs">
+                  <button (click)="tab.activeSubTab = 'details'" class="sub-tab-btn" [class.active]="tab.activeSubTab !== 'related'">Details</button>
+                  <button (click)="tab.activeSubTab = 'related'" class="sub-tab-btn" [class.active]="tab.activeSubTab === 'related'">Related Items</button>
+                </div>
+
+                <!-- DETAILS SUB-TAB CONTENT -->
+                <div *ngIf="tab.activeSubTab !== 'related'" class="sub-tab-content">
+                  <div class="info-group">
+                    <div class="info-row">
+                      <div class="info-item">
+                        <span class="info-label">Account ID</span>
+                        <span class="info-value font-mono select-all">{{ tab.account.id }}</span>
+                      </div>
+                      <div class="info-item" *ngIf="tab.account.industry">
+                        <span class="info-label">Industry</span>
+                        <span class="info-value">{{ tab.account.industry }}</span>
+                      </div>
+                    </div>
+
+                    <div class="info-row">
+                      <div class="info-item">
+                        <span class="info-label">Email</span>
+                        <span class="info-value">{{ tab.account.email1 || '—' }}</span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">Website</span>
+                        <span class="info-value">
+                          <a *ngIf="tab.account.website" [href]="tab.account.website" target="_blank" class="web-link">
+                            {{ tab.account.website }}
+                            <span class="material-icons-round" style="font-size: 14px; margin-left: 2px;">open_in_new</span>
+                          </a>
+                          <span *ngIf="!tab.account.website">—</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="info-row" *ngIf="tab.account.shipping_address_city">
+                      <div class="info-item">
+                        <span class="info-label">Address</span>
+                        <span class="info-value">
+                          {{ tab.account.shipping_address_city }}, {{ tab.account.shipping_address_state || 'Canada' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="info-item full-width" *ngIf="tab.account.description">
+                      <span class="info-label">Description</span>
+                      <div class="info-description-box">
+                        {{ tab.account.description }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- RELATED SUB-TAB CONTENT -->
+                <div *ngIf="tab.activeSubTab === 'related'" class="sub-tab-content">
+                  <div class="related-list-container">
+                    <div class="related-card">
+                      <div class="related-card-header">
+                        <span class="material-icons-round">people</span>
+                        <h3>Contacts (0)</h3>
+                      </div>
+                      <p class="related-empty-text">No contacts linked to this account.</p>
+                    </div>
+
+                    <div class="related-card">
+                      <div class="related-card-header">
+                        <span class="material-icons-round">folder</span>
+                        <h3>Files (0/0)</h3>
+                      </div>
+                      <p class="related-empty-text">No files uploaded.</p>
+                    </div>
+
+                    <div class="related-card">
+                      <div class="related-card-header">
+                        <span class="material-icons-round">groups</span>
+                        <h3>Account Team (0)</h3>
+                      </div>
+                      <p class="related-empty-text">No team members assigned.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Column: Activities (30%) -->
+              <div class="detail-column-right">
+                <div class="activities-card">
+                  <div class="activities-header">
+                    <span class="material-icons-round" style="color: #3b82f6;">history</span>
+                    <h3>Activities</h3>
+                  </div>
+
+                  <div class="activity-quick-actions">
+                    <button 
+                      (click)="tab.activeActivityType = 'call'" 
+                      class="action-tab-btn" 
+                      [class.active]="tab.activeActivityType === 'call' || !tab.activeActivityType"
+                    >Log Call</button>
+                    <button 
+                      (click)="tab.activeActivityType = 'meeting'" 
+                      class="action-tab-btn" 
+                      [class.active]="tab.activeActivityType === 'meeting'"
+                    >Meeting</button>
+                    <button 
+                      (click)="tab.activeActivityType = 'task'" 
+                      class="action-tab-btn" 
+                      [class.active]="tab.activeActivityType === 'task'"
+                    >Task</button>
+                  </div>
+
+                  <!-- LOG CALL FORM -->
+                  <div *ngIf="tab.activeActivityType === 'call' || !tab.activeActivityType" class="activity-log-form">
+                    <input type="text" [(ngModel)]="tab.callForm.subject" placeholder="Subject..." class="activity-input">
+                    <textarea [(ngModel)]="tab.callForm.description" placeholder="Write a note..." class="activity-textarea"></textarea>
+                    <button 
+                      (click)="saveCallActivity(tab)" 
+                      class="btn btn-primary" 
+                      [disabled]="tab.savingActivity"
+                      style="align-self: flex-end; padding: 6px 14px; font-size: 12px; border-radius: var(--border-radius-sm);"
+                    >
+                      Save Call
+                    </button>
+                  </div>
+
+                  <!-- TASK FORM -->
+                  <div *ngIf="tab.activeActivityType === 'task'" class="activity-log-form">
+                    <input type="text" [(ngModel)]="tab.taskForm.subject" placeholder="Subject..." class="activity-input">
+                    <textarea [(ngModel)]="tab.taskForm.description" placeholder="Task description..." class="activity-textarea"></textarea>
+                    <button 
+                      (click)="saveTaskActivity(tab)" 
+                      class="btn btn-primary" 
+                      [disabled]="tab.savingActivity"
+                      style="align-self: flex-end; padding: 6px 14px; font-size: 12px; border-radius: var(--border-radius-sm);"
+                    >
+                      Create Task
+                    </button>
+                  </div>
+
+                  <!-- MEETING GENERATOR FORM -->
+                  <div *ngIf="tab.activeActivityType === 'meeting'" class="activity-log-form">
+                    <div style="font-size: 11px; color: var(--color-primary-hover); font-weight: 700; text-transform: uppercase; margin-bottom: 2px;">
+                      New Meeting
+                    </div>
+                    
+                    <input type="text" [(ngModel)]="tab.meetingForm.subject" placeholder="Meeting Subject..." class="activity-input">
+                    
+                    <div class="datetime-fields" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                      <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                        <span style="font-size: 10px; color: var(--color-text-secondary); font-weight: 500;">Start Time</span>
+                        <input type="datetime-local" [(ngModel)]="tab.meetingForm.dateStart" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box;">
+                      </div>
+                      <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                        <span style="font-size: 10px; color: var(--color-text-secondary); font-weight: 500;">End Time</span>
+                        <input type="datetime-local" [(ngModel)]="tab.meetingForm.dateEnd" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box;">
+                      </div>
+                    </div>
+
+                    <input type="text" [(ngModel)]="tab.meetingForm.location" placeholder="Location (e.g. Teams, Zoom, Office)..." class="activity-input">
+                    
+                    <textarea [(ngModel)]="tab.meetingForm.description" placeholder="Meeting agenda and notes..." class="activity-textarea" style="min-height: 70px;"></textarea>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 10px; align-items: stretch; margin-top: 4px;">
+                      <!-- Status Indicator for Outlook Sync -->
+                      <span style="font-size: 11px; display: flex; align-items: center; gap: 4px;" [style.color]="isOutlookConnected ? '#22c55e' : '#64748b'">
+                        <span class="material-icons-round" style="font-size: 14px;">
+                          {{ isOutlookConnected ? 'cloud_done' : 'cloud_off' }}
+                        </span>
+                        {{ isOutlookConnected ? 'Outlook Sync Connected' : 'CRM Only (Outlook Disconnected)' }}
+                      </span>
+                      
+                      <button 
+                        (click)="saveMeetingActivity(tab)" 
+                        class="btn btn-primary" 
+                        [disabled]="tab.savingActivity"
+                        style="align-self: flex-end; padding: 6px 14px; font-size: 12px; border-radius: var(--border-radius-sm); display: flex; align-items: center; gap: 6px;"
+                      >
+                        Schedule Meeting
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- ACTIVITIES TIMELINE / LIST -->
+                  <div class="activity-timeline">
+                    <div *ngIf="tab.activities.length === 0" class="timeline-empty">
+                      <span class="material-icons-round" style="font-size: 24px; color: var(--color-text-muted);">info</span>
+                      <p>No activity logged yet.</p>
+                    </div>
+                    
+                    <div *ngIf="tab.activities.length > 0" class="activities-list" style="display: flex; flex-direction: column; gap: 12px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
+                      <div *ngFor="let act of tab.activities" class="activity-timeline-item" style="display: flex; gap: 10px; background: rgba(15, 23, 42, 0.2); border: 1px solid var(--glass-border); padding: 10px; border-radius: 6px;">
+                        <span class="material-icons-round" style="font-size: 18px; margin-top: 2px;" [style.color]="act.type === 'Meeting' ? '#3b82f6' : act.type === 'Task' ? '#ec4899' : '#14b8a6'">
+                          {{ act.type === 'Meeting' ? 'today' : act.type === 'Task' ? 'assignment' : 'call' }}
+                        </span>
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+                          <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; font-weight: 600; color: var(--color-text-primary);">{{ act.subject }}</span>
+                            <span style="font-size: 10px; color: var(--color-text-muted);">{{ act.date | date:'shortTime' }}</span>
+                          </div>
+                          <p *ngIf="act.description" style="font-size: 11px; color: var(--color-text-secondary); margin: 2px 0 0 0; line-height: 1.4; white-space: pre-wrap;">{{ act.description }}</p>
+                          <span style="font-size: 9px; font-weight: 600; color: var(--color-primary-hover); margin-top: 4px; display: inline-block;">{{ act.details }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            </ng-container>
+          </div>
+        </div>
+      </ng-container>
     </section>
 
     <!-- Right Panel: Meetings in CRM (Replicated View) -->
@@ -302,7 +750,7 @@
       <div class="panel-header" style="justify-content: space-between;">
         <div class="header-left" style="display: flex; align-items: center; width: 100%;">
           <span class="material-icons-round header-icon" style="background: rgba(14, 165, 233, 0.15); color: #0ea5e9; box-shadow: 0 0 16px rgba(14, 165, 233, 0.2);">today</span>
-          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">all Meetings</h2>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">all Meetings</h2>
           
           <!-- Search Bar -->
           <div class="meetings-search-box">
@@ -356,7 +804,7 @@
               <td style="text-align: center;"><input type="checkbox"></td>
               <td class="cell-name">
                 <span class="material-icons-round avatar" [style.background]="meeting.isOutlook ? 'rgba(37, 99, 235, 0.1)' : 'rgba(14, 165, 233, 0.1)'" [style.color]="meeting.isOutlook ? '#2563eb' : '#0ea5e9'">{{ meeting.isOutlook ? 'calendar_month' : 'today' }}</span>
-                <span class="name-text meeting-row-name">{{ meeting.name }}</span>
+                <a [href]="getMeetingCrmUrl(meeting.id)" (click)="openMeetingTab(meeting); $event.preventDefault();" class="client-detail-link name-text meeting-row-name">{{ meeting.name }}</a>
                 <span *ngIf="meeting.isOutlook" style="background: rgba(37, 99, 235, 0.12); color: #2563eb; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 8px; text-transform: uppercase; letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px;">
                   <span style="width: 6px; height: 6px; border-radius: 50%; background: #2563eb; display: inline-block;"></span>
                   Outlook
@@ -412,7 +860,7 @@
       <div class="panel-header" style="justify-content: space-between;">
         <div class="header-left" style="display: flex; align-items: center; width: 100%;">
           <span class="material-icons-round header-icon" style="background: rgba(20, 184, 166, 0.15); color: #14b8a6; box-shadow: 0 0 16px rgba(20, 184, 166, 0.2);">analytics</span>
-          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">All Reports</h2>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">All Reports</h2>
           
           <!-- Search Bar -->
           <div class="meetings-search-box">
@@ -497,7 +945,7 @@
       <div class="panel-header" style="justify-content: space-between;">
         <div class="header-left" style="display: flex; align-items: center; width: 100%;">
           <span class="material-icons-round header-icon" style="background: rgba(236, 72, 153, 0.15); color: #ec4899; box-shadow: 0 0 16px rgba(236, 72, 153, 0.2);">manage_accounts</span>
-          <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">All users</h2>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">All users</h2>
           
           <!-- Search Bar -->
           <div class="meetings-search-box">
@@ -602,7 +1050,7 @@
     <section *ngIf="activeView === 'settings'" class="panel-crm-records glass-panel">
       <div class="panel-header" style="justify-content: flex-start; gap: 12px; margin-bottom: 24px;">
         <span class="material-icons-round header-icon" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6; box-shadow: 0 0 16px rgba(139, 92, 246, 0.2);">settings</span>
-        <h2 style="font-size: 20px; font-weight: 700; margin: 0; color: #f8fafc;">Profile & Settings</h2>
+        <h2 style="font-size: 20px; font-weight: 700; margin: 0;">Profile & Settings</h2>
       </div>
 
       <div class="settings-container" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; padding: 10px;">
@@ -788,6 +1236,37 @@
       <div class="modal-footer" style="justify-content: center; padding-top: 10px;">
         <button class="btn btn-primary" (click)="handleSessionTimeoutClose()" style="padding: 10px 32px;">
           Return to Login
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success / Notification Modal -->
+  <div class="modal-backdrop" *ngIf="showSuccessModal" (click)="closeSuccessModal()">
+    <div class="modal-card animate-fade-in" (click)="$event.stopPropagation()" style="max-width: 400px; text-align: center; padding: 24px;">
+      <div class="modal-header" style="justify-content: center; border: none; padding-bottom: 0;">
+        <span class="material-icons-round" 
+              [style.color]="successModalType === 'success' ? '#22c55e' : (successModalType === 'warning' ? '#f59e0b' : '#ef4444')"
+              [style.background]="successModalType === 'success' ? 'rgba(34, 197, 94, 0.1)' : (successModalType === 'warning' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')"
+              style="border-radius: 50%; padding: 16px; font-size: 48px; display: inline-flex; align-items: center; justify-content: center;">
+          {{ successModalType === 'success' ? 'check_circle' : (successModalType === 'warning' ? 'warning' : 'error') }}
+        </span>
+      </div>
+      <div class="modal-body" style="padding: 16px 10px;">
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 12px;">
+          {{ successModalTitle }}
+        </h3>
+        <p style="font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+          {{ successModalBody }}
+        </p>
+      </div>
+      <div class="modal-footer" style="justify-content: center; gap: 12px; border: none; padding-top: 12px;">
+        <button class="btn btn-secondary" (click)="closeSuccessModal()" style="padding: 8px 20px; font-size: 13px;">
+          Close
+        </button>
+        <button class="btn btn-primary" *ngIf="successModalTabId" (click)="viewSuccessTab()" style="padding: 8px 20px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+          <span class="material-icons-round" style="font-size: 16px;">open_in_new</span>
+          View Meeting
         </button>
       </div>
     </div>

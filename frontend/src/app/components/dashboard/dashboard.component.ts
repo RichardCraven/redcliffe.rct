@@ -1,7 +1,7 @@
 import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ImportResults } from '../../services/crm.service';
 
 @Component({
@@ -27,6 +27,8 @@ export class DashboardComponent implements OnInit {
   recentAccounts: AccountBean[] = [];
   isLoadingAccounts = false;
   accountsSearchQuery = '';
+  openAccountTabs: Array<any> = [];
+  activeAccountTabId: string | null = null;
 
   meetingsList: MeetingBean[] = [];
   isLoadingMeetings = false;
@@ -94,6 +96,12 @@ export class DashboardComponent implements OnInit {
 
   showDevConsole = false;
   awaitingPasswordForDeleteAll = false;
+
+  showSuccessModal = false;
+  successModalTitle = '';
+  successModalBody = '';
+  successModalTabId: string | null = null;
+  successModalType: 'success' | 'warning' | 'error' = 'success';
   isDeletingAll = false;
   
   @ViewChild('devInput') devInputRef!: ElementRef;
@@ -140,39 +148,44 @@ export class DashboardComponent implements OnInit {
       this.loadRecentAccounts();
       const el = document.querySelector('.panel-accounts');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
-    } else if (appName === 'Meetings') {
-      this.activeView = 'meetings';
-      this.loadRecentMeetings();
-    } else if (appName === 'Users') {
-      this.activeView = 'users';
-      this.loadRecentUsers();
-    } else if (appName === 'Reports') {
-      this.activeView = 'reports';
-      this.loadRecentReports();
-    } else if (appName === 'Imports') {
-      if (this.currentRole === 'Sales') {
-        alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
-      } else {
-        this.activeView = 'accounts';
-        setTimeout(() => {
-          const el = document.querySelector('.panel-import');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 50);
-      }
-    } else if (appName === 'Settings') {
-      this.activeView = 'settings';
-      if (this.currentUserProfile) {
-        this.profileFirstName = this.currentUserProfile.first_name || '';
-        this.profileLastName = this.currentUserProfile.last_name || '';
-        this.profileEmail = this.currentUserProfile.email1 || '';
-        this.loadOutlookStatus();
-      } else {
-        this.profileFirstName = sessionStorage.getItem('profile_first_name') || '';
-        this.profileLastName = sessionStorage.getItem('profile_last_name') || '';
-        this.profileEmail = sessionStorage.getItem('profile_email') || '';
-      }
     } else {
-      alert(`Navigating to mock application: "${appName}". This screen will be populated based on the ${this.currentRole} metadata definitions.`);
+      this.updateTabRoute(null);
+      this.activeAccountTabId = null;
+
+      if (appName === 'Meetings') {
+        this.activeView = 'meetings';
+        this.loadRecentMeetings();
+      } else if (appName === 'Users') {
+        this.activeView = 'users';
+        this.loadRecentUsers();
+      } else if (appName === 'Reports') {
+        this.activeView = 'reports';
+        this.loadRecentReports();
+      } else if (appName === 'Imports') {
+        if (this.currentRole === 'Sales') {
+          alert('Access Denied: The Sales role does not have permission to view or execute Imports.');
+        } else {
+          this.activeView = 'accounts';
+          setTimeout(() => {
+            const el = document.querySelector('.panel-import');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }, 50);
+        }
+      } else if (appName === 'Settings') {
+        this.activeView = 'settings';
+        if (this.currentUserProfile) {
+          this.profileFirstName = this.currentUserProfile.first_name || '';
+          this.profileLastName = this.currentUserProfile.last_name || '';
+          this.profileEmail = this.currentUserProfile.email1 || '';
+          this.loadOutlookStatus();
+        } else {
+          this.profileFirstName = sessionStorage.getItem('profile_first_name') || '';
+          this.profileLastName = sessionStorage.getItem('profile_last_name') || '';
+          this.profileEmail = sessionStorage.getItem('profile_email') || '';
+        }
+      } else {
+        alert(`Navigating to mock application: "${appName}". This screen will be populated based on the ${this.currentRole} metadata definitions.`);
+      }
     }
   }
 
@@ -280,7 +293,11 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-  constructor(private crmService: CrmService, private router: Router) {}
+  constructor(
+    private crmService: CrmService,
+    private router: Router,
+    private route: ActivatedRoute
+  ) {}
 
   ngOnInit() {
     this.isDarkMode = localStorage.getItem('theme') !== 'light';
@@ -292,6 +309,24 @@ export class DashboardComponent implements OnInit {
     // Listen for session invalidation/timeouts
     this.crmService.sessionTimeout$.subscribe(() => {
       this.showSessionTimeoutModal = true;
+    });
+
+    // Handle query params for tabs
+    this.route.queryParams.subscribe(params => {
+      const activeTabId = params['tab'];
+      if (activeTabId) {
+        if (activeTabId.startsWith('account_')) {
+          const accountId = activeTabId.replace('account_', '');
+          this.openAccountTabById(accountId);
+        } else if (activeTabId.startsWith('meeting_')) {
+          const meetingId = activeTabId.replace('meeting_', '');
+          this.openMeetingTabById(meetingId);
+        } else {
+          this.activeAccountTabId = null;
+        }
+      } else {
+        this.activeAccountTabId = null;
+      }
     });
   }
 
@@ -373,27 +408,47 @@ export class DashboardComponent implements OnInit {
               });
 
               // Merge lists and sort descending (newest start dates first)
-              this.meetingsList = [...crmMeetings, ...mappedOutlookMeetings].sort((a, b) => {
+              const sorted = [...crmMeetings, ...mappedOutlookMeetings].sort((a, b) => {
                 const dateA = new Date(a.date_start.replace(' ', 'T')).getTime() || 0;
                 const dateB = new Date(b.date_start.replace(' ', 'T')).getTime() || 0;
                 return dateB - dateA;
               });
+              this.meetingsList = this.processMeetingsList(sorted);
               this.isLoadingMeetings = false;
             },
             error: (err) => {
               console.error('Failed to load Outlook events:', err);
-              this.meetingsList = crmMeetings;
+              this.meetingsList = this.processMeetingsList(crmMeetings);
               this.isLoadingMeetings = false;
             }
           });
         } else {
-          this.meetingsList = crmMeetings;
+          this.meetingsList = this.processMeetingsList(crmMeetings);
           this.isLoadingMeetings = false;
         }
       },
       error: () => {
         this.isLoadingMeetings = false;
       }
+    });
+  }
+
+  processMeetingsList(meetings: any[]): any[] {
+    const now = new Date();
+    return meetings.map(meeting => {
+      const dateStr = meeting.date_end || meeting.date_start;
+      if (dateStr) {
+        try {
+          const cleanDateStr = dateStr.replace(' ', 'T');
+          const meetingDate = new Date(cleanDateStr);
+          if (meetingDate < now && (meeting.status === 'Planned' || meeting.status === 'planned')) {
+            meeting.status = 'Held';
+          }
+        } catch (e) {
+          // Ignored
+        }
+      }
+      return meeting;
     });
   }
 
@@ -406,6 +461,444 @@ export class DashboardComponent implements OnInit {
     } catch {
       return '';
     }
+  }
+
+  getAccountCrmUrl(accountId: string): string {
+    if (!this.crmUrl) return '#';
+    // Strip trailing '/api' or '/api/'
+    let baseUrl = this.crmUrl.replace(/\/api\/?$/, '');
+    
+    // In sandbox, the API domain is rspice-int.pfcd.ca but the UI is redcliffeapp-int.pfcd.ca
+    if (baseUrl.includes('rspice-int.pfcd.ca')) {
+      baseUrl = baseUrl.replace('rspice-int.pfcd.ca', 'redcliffeapp-int.pfcd.ca');
+    }
+    
+    return `${baseUrl}/#/module/Accounts/${accountId}`;
+  }
+
+  openAccountTab(acc: any) {
+    const tabId = `account_${acc.id}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (!existing) {
+      this.openAccountTabs.push({
+        id: tabId,
+        name: acc.name,
+        account: acc,
+        activeSubTab: 'details',
+        activeActivityType: 'call',
+        meetingForm: this.getInitialMeetingForm(),
+        callForm: { subject: '', description: '' },
+        taskForm: { subject: '', description: '' },
+        savingActivity: false,
+        activities: []
+      });
+    }
+    this.activeAccountTabId = tabId;
+    this.updateTabRoute(tabId);
+  }
+
+  openAccountTabById(accountId: string) {
+    const tabId = `account_${accountId}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (existing) {
+      this.activeAccountTabId = tabId;
+      return;
+    }
+
+    // Try to find in loaded recentAccounts first
+    const loaded = this.recentAccounts.find(a => a.id === accountId);
+    if (loaded) {
+      this.openAccountTabs.push({
+        id: tabId,
+        name: loaded.name,
+        account: loaded,
+        activeSubTab: 'details',
+        activeActivityType: 'call',
+        meetingForm: this.getInitialMeetingForm(),
+        callForm: { subject: '', description: '' },
+        taskForm: { subject: '', description: '' },
+        savingActivity: false,
+        activities: []
+      });
+      this.activeAccountTabId = tabId;
+    } else {
+      // Fetch from API
+      this.crmService.getAccount(accountId).subscribe({
+        next: (acc) => {
+          this.openAccountTabs.push({
+            id: tabId,
+            name: acc.name,
+            account: acc,
+            activeSubTab: 'details',
+            activeActivityType: 'call',
+            meetingForm: this.getInitialMeetingForm(),
+            callForm: { subject: '', description: '' },
+            taskForm: { subject: '', description: '' },
+            savingActivity: false,
+            activities: []
+          });
+          this.activeAccountTabId = tabId;
+        },
+        error: (err) => {
+          console.error('Failed to fetch account detail:', err);
+        }
+      });
+    }
+  }
+
+  openMeetingTab(meeting: any) {
+    const tabId = `meeting_${meeting.id}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (!existing) {
+      this.openAccountTabs.push({
+        id: tabId,
+        name: meeting.name,
+        meeting: meeting,
+        type: 'meeting',
+        activeSubTab: 'details',
+        isLoading: false
+      });
+    }
+    this.activeView = 'accounts';
+    this.activeAccountTabId = tabId;
+    this.updateTabRoute(tabId);
+  }
+
+  openMeetingTabById(meetingId: string) {
+    const tabId = `meeting_${meetingId}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (existing) {
+      this.activeAccountTabId = tabId;
+      return;
+    }
+
+    // Try to find in loaded meetingsList first
+    const loaded = this.meetingsList.find(m => m.id === meetingId);
+    if (loaded) {
+      this.openAccountTabs.push({
+        id: tabId,
+        name: loaded.name,
+        meeting: loaded,
+        type: 'meeting',
+        activeSubTab: 'details',
+        isLoading: false
+      });
+      this.activeView = 'accounts';
+      this.activeAccountTabId = tabId;
+    } else {
+      const isOutlookId = meetingId.length > 50 || !meetingId.includes('-');
+      
+      if (isOutlookId && this.currentUserProfile) {
+        this.crmService.getOutlookEvent(meetingId, this.currentUserProfile.id).subscribe({
+          next: (evt) => {
+            const startStr = evt.start?.dateTime ? this.formatIsoToCrmDate(evt.start.dateTime) : '';
+            const endStr = evt.end?.dateTime ? this.formatIsoToCrmDate(evt.end.dateTime) : '';
+            const mapped = {
+              id: evt.id,
+              name: evt.subject || 'No Subject',
+              date_start: startStr,
+              date_end: endStr,
+              status: 'Planned',
+              parent_name: evt.location?.displayName || 'Outlook Calendar',
+              parent_type: 'Outlook',
+              assigned_user_name: evt.organizer?.emailAddress?.name || 'Outlook User',
+              isOutlook: true,
+              description: evt.body?.content || '',
+              joinUrl: evt.onlineMeeting?.joinUrl || evt.onlineMeetingUrl || evt.webLink || null
+            };
+            
+            const processed = this.processMeetingsList([mapped])[0];
+
+            this.openAccountTabs.push({
+              id: tabId,
+              name: processed.name,
+              meeting: processed,
+              type: 'meeting',
+              activeSubTab: 'details',
+              isLoading: false
+            });
+            this.activeView = 'accounts';
+            this.activeAccountTabId = tabId;
+          },
+          error: (err) => {
+            console.error('Failed to fetch Outlook event detail:', err);
+          }
+        });
+      } else {
+        this.crmService.getMeeting(meetingId).subscribe({
+          next: (meeting) => {
+            const processed = this.processMeetingsList([meeting])[0];
+            this.openAccountTabs.push({
+              id: tabId,
+              name: processed.name,
+              meeting: processed,
+              type: 'meeting',
+              activeSubTab: 'details',
+              isLoading: false
+            });
+            this.activeView = 'accounts';
+            this.activeAccountTabId = tabId;
+          },
+          error: (err) => {
+            console.error('Failed to fetch SpiceCRM meeting detail:', err);
+          }
+        });
+      }
+    }
+  }
+
+  getMeetingCrmUrl(meetingId: string): string {
+    return `https://spice.pfcd.ca/#/module/Meetings/${meetingId}`;
+  }
+
+  getUserDisplayName(user: any): string {
+    if (!user) return 'Administrator';
+    if (typeof user === 'string') return user;
+    if (typeof user === 'object') {
+      return user.name || user.value || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Administrator';
+    }
+    return 'Administrator';
+  }
+
+  triggerSuccessModal(title: string, body: string, tabId: string | null = null, type: 'success' | 'warning' | 'error' = 'success') {
+    this.successModalTitle = title;
+    this.successModalBody = body;
+    this.successModalTabId = tabId;
+    this.successModalType = type;
+    this.showSuccessModal = true;
+  }
+
+  closeSuccessModal() {
+    this.showSuccessModal = false;
+    this.successModalTitle = '';
+    this.successModalBody = '';
+    this.successModalTabId = null;
+  }
+
+  viewSuccessTab() {
+    if (this.successModalTabId) {
+      if (this.successModalTabId.startsWith('meeting_')) {
+        const id = this.successModalTabId.replace('meeting_', '');
+        this.openMeetingTabById(id);
+      } else if (this.successModalTabId.startsWith('account_')) {
+        const id = this.successModalTabId.replace('account_', '');
+        this.openAccountTabById(id);
+      }
+    }
+    this.closeSuccessModal();
+  }
+
+  updateTabRoute(tabId: string | null) {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: tabId || null },
+      queryParamsHandling: 'merge'
+    });
+  }
+
+  closeAccountTab(tabId: string, event: MouseEvent) {
+    event.stopPropagation();
+    this.openAccountTabs = this.openAccountTabs.filter(t => t.id !== tabId);
+    if (this.activeAccountTabId === tabId) {
+      if (this.openAccountTabs.length > 0) {
+        const nextTab = this.openAccountTabs[this.openAccountTabs.length - 1];
+        this.activeAccountTabId = nextTab.id;
+        this.updateTabRoute(nextTab.id);
+      } else {
+        this.activeAccountTabId = null;
+        this.updateTabRoute(null);
+      }
+    }
+  }
+
+  setActiveAccountTab(tabId: string | null) {
+    this.activeAccountTabId = tabId;
+    this.updateTabRoute(tabId);
+  }
+
+  getInitialMeetingForm() {
+    // Default to tomorrow at 10 AM
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    const tomorrowEnd = new Date(tomorrow);
+    tomorrowEnd.setHours(11, 0, 0, 0);
+    
+    // Format to YYYY-MM-DDTHH:MM (for datetime-local)
+    const formatDt = (d: Date) => {
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    return {
+      subject: '',
+      dateStart: formatDt(tomorrow),
+      dateEnd: formatDt(tomorrowEnd),
+      description: '',
+      location: ''
+    };
+  }
+
+  resetMeetingForm(tab: any) {
+    tab.meetingForm = this.getInitialMeetingForm();
+  }
+
+  formatDateToCrm(dateTimeLocalStr: string): string {
+    if (!dateTimeLocalStr) return '';
+    try {
+      const d = new Date(dateTimeLocalStr);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch {
+      return '';
+    }
+  }
+
+  saveMeetingActivity(tab: any) {
+    if (!tab.meetingForm.subject || !tab.meetingForm.dateStart || !tab.meetingForm.dateEnd) {
+      alert('Please fill in the Subject, Start Time, and End Time.');
+      return;
+    }
+
+    tab.savingActivity = true;
+
+    // 1. Prepare SpiceCRM meeting record data
+    const meetingData = {
+      name: tab.meetingForm.subject,
+      description: tab.meetingForm.description,
+      date_start: this.formatDateToCrm(tab.meetingForm.dateStart),
+      date_end: this.formatDateToCrm(tab.meetingForm.dateEnd),
+      location: tab.meetingForm.location || '',
+      parent_id: tab.account.id,
+      parent_type: 'Accounts',
+      status: 'Planned'
+    };
+
+    this.crmService.createMeeting(meetingData).subscribe({
+      next: (crmMeeting) => {
+        const localActivity = {
+          type: 'Meeting',
+          subject: tab.meetingForm.subject,
+          date: tab.meetingForm.dateStart,
+          description: tab.meetingForm.description,
+          details: 'Saved in CRM'
+        };
+        
+        // 2. If Outlook is connected, push to Outlook Calendar as well
+        if (this.isOutlookConnected && this.currentUserProfile) {
+          const outlookEvent = {
+            subject: tab.meetingForm.subject,
+            body: {
+              contentType: 'HTML',
+              content: `${tab.meetingForm.description}<br/><br/><i>Created via Redcliffe Portal for ${tab.account.name}</i>`
+            },
+            start: {
+              dateTime: new Date(tab.meetingForm.dateStart).toISOString(),
+              timeZone: 'Pacific Standard Time'
+            },
+            end: {
+              dateTime: new Date(tab.meetingForm.dateEnd).toISOString(),
+              timeZone: 'Pacific Standard Time'
+            },
+            location: {
+              displayName: tab.meetingForm.location || 'Online / Portal Scheduled'
+            }
+          };
+
+          this.crmService.createOutlookEvent(this.currentUserProfile.id, outlookEvent).subscribe({
+            next: () => {
+              localActivity.details = 'Saved in CRM & Synced to Outlook';
+              tab.activities.unshift(localActivity);
+              tab.savingActivity = false;
+              this.resetMeetingForm(tab);
+              // Refresh general meetings list
+              this.loadRecentMeetings();
+              this.triggerSuccessModal(
+                'Meeting Scheduled!',
+                'The meeting has been successfully created in SpiceCRM and synchronized to your Microsoft Outlook Calendar.',
+                'meeting_' + (crmMeeting.id || crmMeeting.uuid || ''),
+                'success'
+              );
+            },
+            error: (err) => {
+              console.error('Failed to sync meeting to Outlook:', err);
+              localActivity.details = 'Saved in CRM (Outlook Sync Failed)';
+              tab.activities.unshift(localActivity);
+              tab.savingActivity = false;
+              this.resetMeetingForm(tab);
+              this.loadRecentMeetings();
+              this.triggerSuccessModal(
+                'Meeting Saved with Sync Warning',
+                'The meeting was created in the CRM database, but we could not synchronize it to Microsoft Outlook. Error: ' + (err.error?.error || err.message),
+                'meeting_' + (crmMeeting.id || crmMeeting.uuid || ''),
+                'warning'
+              );
+            }
+          });
+        } else {
+          tab.activities.unshift(localActivity);
+          tab.savingActivity = false;
+          this.resetMeetingForm(tab);
+          this.loadRecentMeetings();
+          this.triggerSuccessModal(
+            'Meeting Scheduled!',
+            'The meeting has been successfully created in SpiceCRM.',
+            'meeting_' + (crmMeeting.id || crmMeeting.uuid || ''),
+            'success'
+          );
+        }
+      },
+      error: (err) => {
+        console.error('Failed to create meeting in CRM:', err);
+        tab.savingActivity = false;
+        this.triggerSuccessModal(
+          'Failed to Save Meeting',
+          'An error occurred while saving the meeting to SpiceCRM: ' + (err.error?.error || err.message),
+          null,
+          'error'
+        );
+      }
+    });
+  }
+
+  saveCallActivity(tab: any) {
+    if (!tab.callForm.subject) {
+      alert('Please enter a call subject.');
+      return;
+    }
+    tab.savingActivity = true;
+    setTimeout(() => {
+      tab.activities.unshift({
+        type: 'Call',
+        subject: tab.callForm.subject,
+        date: new Date().toISOString(),
+        description: tab.callForm.description,
+        details: 'Logged successfully'
+      });
+      tab.callForm.subject = '';
+      tab.callForm.description = '';
+      tab.savingActivity = false;
+    }, 400);
+  }
+
+  saveTaskActivity(tab: any) {
+    if (!tab.taskForm.subject) {
+      alert('Please enter a task subject.');
+      return;
+    }
+    tab.savingActivity = true;
+    setTimeout(() => {
+      tab.activities.unshift({
+        type: 'Task',
+        subject: tab.taskForm.subject,
+        date: new Date().toISOString(),
+        description: tab.taskForm.description,
+        details: 'Logged successfully'
+      });
+      tab.taskForm.subject = '';
+      tab.taskForm.description = '';
+      tab.savingActivity = false;
+    }, 400);
   }
 
   get filteredAccounts() {
