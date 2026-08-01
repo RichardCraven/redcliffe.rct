@@ -1,4 +1,15 @@
 <div class="app-container animate-fade-in">
+  <!-- Full Page Connection Loading Overlay -->
+  <div class="connection-loading-overlay animate-fade-in" *ngIf="connectionStatus === 'checking'">
+    <div class="loading-content">
+      <div class="spinner-container">
+        <span class="material-icons-round spinning connection-spinner">sync</span>
+      </div>
+      <h2 style="font-size: 22px; font-weight: 700; color: #ffffff; margin: 0 0 8px 0; text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);">Connecting to SpiceCRM</h2>
+      <p style="font-size: 14px; color: #94a3b8; margin: 0; max-width: 320px; line-height: 1.6;">Verifying session credentials and loading integration workspace. Please wait...</p>
+    </div>
+  </div>
+
   <!-- Top Navigation Header -->
   <header class="main-header glass-panel">
     <div class="brand">
@@ -681,11 +692,11 @@
                     <div class="datetime-fields" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
                       <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
                         <span style="font-size: 10px; color: var(--color-text-secondary); font-weight: 500;">Start Time</span>
-                        <input type="datetime-local" [(ngModel)]="tab.meetingForm.dateStart" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box;">
+                        <input type="datetime-local" (click)="triggerPlatformDatePicker($event)" [(ngModel)]="tab.meetingForm.dateStart" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box; cursor: pointer;">
                       </div>
                       <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
                         <span style="font-size: 10px; color: var(--color-text-secondary); font-weight: 500;">End Time</span>
-                        <input type="datetime-local" [(ngModel)]="tab.meetingForm.dateEnd" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box;">
+                        <input type="datetime-local" (click)="triggerPlatformDatePicker($event)" [(ngModel)]="tab.meetingForm.dateEnd" class="activity-input" style="padding: 6px 8px; font-size: 12px; width: 100%; box-sizing: border-box; cursor: pointer;">
                       </div>
                     </div>
 

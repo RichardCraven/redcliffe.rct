@@ -688,6 +688,17 @@ export class DashboardComponent implements OnInit {
     this.closeSuccessModal();
   }
 
+  triggerPlatformDatePicker(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input && typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+      } catch (e) {
+        console.warn('Native showPicker not supported or blocked:', e);
+      }
+    }
+  }
+
   updateTabRoute(tabId: string | null) {
     this.router.navigate([], {
       relativeTo: this.route,
