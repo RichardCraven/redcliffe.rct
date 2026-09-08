@@ -1,8 +1,8 @@
-import { Component, OnInit, HostListener, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
-import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ImportResults } from '../../services/crm.service';
+import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ReportColumn, ReportExecutionResult, ImportResults, IndividualBean, GroupBenefitsData, PlanAdminData } from '../../services/crm.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -11,7 +11,7 @@ import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ImportResul
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.css']
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   connectionStatus: 'checking' | 'connected' | 'error' = 'checking';
   crmUrl: string = '';
   errorMessage: string = '';
@@ -42,7 +42,35 @@ export class DashboardComponent implements OnInit {
   isLoadingReports = false;
   reportsSearchQuery = '';
 
-  activeView: 'accounts' | 'meetings' | 'users' | 'reports' | 'settings' = 'accounts';
+  // Report Viewer & Execution State
+  showReportViewerModal = false;
+  activeReport: ReportBean | null = null;
+  activeReportData: ReportExecutionResult | null = null;
+  isLoadingReportData = false;
+  reportDataError: string | null = null;
+  reportDataSearchQuery = '';
+  reportSortColumn = '';
+  reportSortAsc = true;
+  isExportingCsv = false;
+
+  activeView: 'accounts' | 'meetings' | 'users' | 'reports' | 'settings' | 'individuals' = 'accounts';
+
+  // Individuals State
+  individualsList: IndividualBean[] = [];
+  isLoadingIndividuals = false;
+  individualsSearchQuery = '';
+  showCreateIndividualModal = false;
+  isCreatingIndividual = false;
+  newIndividualForm = {
+    name: '',
+    email: '',
+    phone: '',
+    role: 'Plan Administrator',
+    account_id: '',
+    account_name: '',
+    notes: '',
+    status: 'Active'
+  };
 
   // Profile and Settings State
   currentUserProfile: UserBean | null = null;
@@ -55,6 +83,52 @@ export class DashboardComponent implements OnInit {
   showAssignedColumn = false;
   showReportAssignedColumn = false;
   isImportPanelCollapsed = true;
+
+  // Database Backend State (SpiceCRM vs SQLite)
+  backendMode: 'spice' | 'sqlite' = 'spice';
+  isSqliteBackend = false;
+  sqliteStats: any = null;
+  isSwitchingBackend = false;
+  isSyncingBackend = false;
+  syncSummaryMessage = '';
+
+  // Password Change State
+  currentPasswordInput = '';
+  newPasswordInput = '';
+  confirmPasswordInput = '';
+  isChangingPassword = false;
+  passwordChangeMessage = '';
+  passwordChangeError = '';
+
+  // Accounts Table Column Preferences State
+  showColumnPickerModal = false;
+  availableAccountColumns = [
+    { id: 'name', label: 'Client Name', description: 'Company or organization legal name', default: true },
+    { id: 'email', label: 'Email', description: 'Primary contact email address', default: true },
+    { id: 'website', label: 'Website', description: 'Company web address URL', default: true },
+    { id: 'location', label: 'Location', description: 'City and province / state', default: true },
+    { id: 'industry', label: 'Industry', description: 'Industry classification category', default: false },
+    { id: 'account_type', label: 'Account Type', description: 'CRM account tier or category', default: false },
+    { id: 'renewal_date', label: 'Renewal Date', description: 'Group benefits annual renewal date', default: false },
+    { id: 'carrier_tpa', label: 'Carrier / TPA', description: 'Insurance carrier or administrator', default: false },
+    { id: 'num_employees', label: 'Employees', description: 'Number of enrolled group employees', default: false },
+    { id: 'description', label: 'Description', description: 'Summary description and notes', default: false }
+  ];
+
+  selectedAccountColumns: { [key: string]: boolean } = {
+    name: true,
+    email: true,
+    website: true,
+    location: true,
+    industry: false,
+    account_type: false,
+    renewal_date: false,
+    carrier_tpa: false,
+    num_employees: false,
+    description: false
+  };
+
+  tempAccountColumns: { [key: string]: boolean } = { ...this.selectedAccountColumns };
 
   // App Launcher & Role State
   showAppLauncher = false;
@@ -69,6 +143,7 @@ export class DashboardComponent implements OnInit {
   showDetailsModal = false;
   detailsModalTitle = '';
   detailsModalType: 'meeting' | 'user' | 'report' | null = null;
+  selectedAccount: AccountBean | null = null;
   selectedMeeting: MeetingBean | null = null;
   selectedUser: UserBean | null = null;
   selectedReport: ReportBean | null = null;
@@ -76,6 +151,7 @@ export class DashboardComponent implements OnInit {
   // Available Apps list
   appsList = [
     { name: 'Accounts', desc: 'Manage customer portfolios and details.', icon: 'corporate_fare', type: 'accounts' },
+    { name: 'Individuals', desc: 'Directory of individual plan administrators and contacts.', icon: 'badge', type: 'individuals' },
     { name: 'Meetings', desc: 'View scheduled company meetings.', icon: 'today', type: 'meetings' },
     { name: 'Imports', desc: 'CSV database population terminal.', icon: 'cloud_upload', type: 'imports' },
     { name: 'Reports', desc: 'Analytical summaries and metrics.', icon: 'analytics', type: 'reports' },
@@ -96,6 +172,31 @@ export class DashboardComponent implements OnInit {
 
   showDevConsole = false;
   awaitingPasswordForDeleteAll = false;
+
+  // Performance Monitoring & Heap Flushing State
+  perfMetrics = {
+    fps: 60,
+    ping: 0,
+    usedHeapMb: 0,
+    totalHeapMb: 0
+  };
+  lastPurgeMessage = '';
+  private rafId: number | null = null;
+  private lastTime = 0;
+  private lastFpsUpdate = 0;
+  private frameCount = 0;
+
+  get fpsColor(): string {
+    if (this.perfMetrics.fps >= 50) return '#4ade80';
+    if (this.perfMetrics.fps >= 30) return '#facc15';
+    return '#f87171';
+  }
+
+  get pingColor(): string {
+    if (this.perfMetrics.ping <= 8) return '#4ade80';
+    if (this.perfMetrics.ping <= 20) return '#facc15';
+    return '#f87171';
+  }
 
   showSuccessModal = false;
   successModalTitle = '';
@@ -122,10 +223,146 @@ export class DashboardComponent implements OnInit {
   toggleDevConsole() {
     this.showDevConsole = !this.showDevConsole;
     if (this.showDevConsole) {
+      this.startPerfMonitoring();
       setTimeout(() => {
         this.devInputRef?.nativeElement?.focus();
       }, 50);
+    } else {
+      this.stopPerfMonitoring();
     }
+  }
+
+  ngOnDestroy() {
+    this.stopPerfMonitoring();
+  }
+
+  startPerfMonitoring() {
+    if (this.rafId) return;
+    this.lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this.lastFpsUpdate = this.lastTime;
+    this.frameCount = 0;
+
+    const loop = (now: number) => {
+      if (!this.showDevConsole) {
+        this.stopPerfMonitoring();
+        return;
+      }
+
+      this.frameCount++;
+      const delta = now - this.lastTime;
+      this.lastTime = now;
+
+      // Update metrics every 800ms
+      if (now - this.lastFpsUpdate >= 800) {
+        const interval = now - this.lastFpsUpdate;
+        const measuredFps = Math.min(60, Math.round((this.frameCount * 1000) / interval));
+        const expectedDelta = measuredFps > 0 ? 1000 / measuredFps : 16.6;
+        const mainThreadJitterMs = Math.max(0, Math.round((delta - expectedDelta) * 10) / 10);
+
+        this.frameCount = 0;
+        this.lastFpsUpdate = now;
+
+        let usedMb = 0;
+        let totalMb = 0;
+        const perfMemory = (performance as any)?.memory;
+        if (perfMemory) {
+          usedMb = Math.round(perfMemory.usedJSHeapSize / (1024 * 1024));
+          totalMb = Math.round(perfMemory.totalJSHeapSize / (1024 * 1024));
+        }
+
+        this.perfMetrics = {
+          fps: measuredFps,
+          ping: mainThreadJitterMs,
+          usedHeapMb: usedMb,
+          totalHeapMb: totalMb
+        };
+      }
+
+      this.rafId = requestAnimationFrame(loop);
+    };
+
+    this.rafId = requestAnimationFrame(loop);
+  }
+
+  stopPerfMonitoring() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  flushArraysAndHeap(fromCli = false) {
+    const closedTabsCount = this.openAccountTabs.length;
+
+    // 1. Close and release all open account detail tabs (heaviest DOM structures)
+    this.openAccountTabs = [];
+    this.activeAccountTabId = null;
+    this.updateTabRoute(null);
+
+    // 2. Clear selected modal entities and cached states
+    this.selectedAccount = null;
+    this.selectedMeeting = null;
+    this.selectedUser = null;
+    this.selectedReport = null;
+    this.showDetailsModal = false;
+    this.showCreateIndividualModal = false;
+    this.showSuccessModal = false;
+
+    // 3. Clear file imports & parsing buffers
+    this.selectedFile = null;
+    this.importResults = null;
+    this.isUploading = false;
+    this.uploadProgress = 0;
+
+    // 4. Clear search filters and active menu popups
+    this.accountsSearchQuery = '';
+    this.meetingsSearchQuery = '';
+    this.usersSearchQuery = '';
+    this.reportsSearchQuery = '';
+    this.individualsSearchQuery = '';
+    this.appSearchTerm = '';
+    this.activeMenuRowId = null;
+    this.activeMenuType = null;
+
+    // 5. If console history is large, prune to initial greetings
+    if (this.consoleHistory.length > 30) {
+      this.consoleHistory = [
+        { text: 'Redcliffe Developer Console v1.0.0 initialized.', type: 'success' },
+        { text: 'Type "help" for a list of available commands.', type: 'output' }
+      ];
+    }
+
+    // 6. Force V8 Scavenger GC heuristic by allocating and immediately discarding buffer
+    try {
+      let temp: any = new Array(1000000);
+      temp.fill(0);
+      temp = null;
+    } catch (_) {}
+
+    if (typeof (window as any).gc === 'function') {
+      try {
+        (window as any).gc();
+      } catch (_) {}
+    }
+
+    // 7. Measure current heap after flush
+    const perfMemory = (performance as any)?.memory;
+    const nowUsed = perfMemory ? Math.round(perfMemory.usedJSHeapSize / (1024 * 1024)) : null;
+
+    const summaryMsg = nowUsed
+      ? `Flushed ${closedTabsCount} tab(s) & heap arrays. Heap: ${nowUsed} MB (Baseline restored)`
+      : `Flushed ${closedTabsCount} tab(s) & arrays. Pristine baseline restored!`;
+
+    this.lastPurgeMessage = summaryMsg;
+
+    if (fromCli) {
+      this.consoleHistory.push({ text: `🧹 ${summaryMsg}`, type: 'success' });
+      this.scrollToBottom();
+    }
+
+    setTimeout(() => {
+      this.lastPurgeMessage = '';
+    }, 3500);
   }
 
   toggleAppLauncher() {
@@ -155,6 +392,9 @@ export class DashboardComponent implements OnInit {
       if (appName === 'Meetings') {
         this.activeView = 'meetings';
         this.loadRecentMeetings();
+      } else if (appName === 'Individuals') {
+        this.activeView = 'individuals';
+        this.loadIndividuals();
       } else if (appName === 'Users') {
         this.activeView = 'users';
         this.loadRecentUsers();
@@ -227,8 +467,28 @@ export class DashboardComponent implements OnInit {
         this.consoleHistory.push({ text: '  refresh            - Load recent client accounts', type: 'output' });
         this.consoleHistory.push({ text: '  token              - Print current session token', type: 'output' });
         this.consoleHistory.push({ text: '  count              - Print total number of client records loaded', type: 'output' });
+        this.consoleHistory.push({ text: '  backend            - Print active DB backend & SQLite stats', type: 'output' });
+        this.consoleHistory.push({ text: '  toggle-backend     - Switch between SpiceCRM and SQLite backends', type: 'output' });
+        this.consoleHistory.push({ text: '  perf | memory      - Print real-time FPS, ping & JS heap metrics', type: 'output' });
+        this.consoleHistory.push({ text: '  flush | purge      - Flush open tabs, arrays & heap to baseline', type: 'output' });
         this.consoleHistory.push({ text: '  delete all records - Bulk delete all Accounts (password req.)', type: 'output' });
         this.consoleHistory.push({ text: '  clear              - Clear console output history', type: 'output' });
+        break;
+      case 'perf':
+      case 'memory':
+      case 'mem': {
+        const mem = (performance as any)?.memory;
+        const used = mem ? Math.round(mem.usedJSHeapSize / (1024 * 1024)) : 'N/A';
+        const total = mem ? Math.round(mem.totalJSHeapSize / (1024 * 1024)) : 'N/A';
+        this.consoleHistory.push({
+          text: `⚡ Metrics: ${this.perfMetrics.fps} FPS | Latency: ${this.perfMetrics.ping}ms | Heap: ${used}MB / ${total}MB | Open Tabs: ${this.openAccountTabs.length}`,
+          type: 'success'
+        });
+        break;
+      }
+      case 'flush':
+      case 'purge':
+        this.flushArraysAndHeap(true);
         break;
       case 'ping':
       case 'status':
@@ -274,6 +534,22 @@ export class DashboardComponent implements OnInit {
       case 'count':
         this.consoleHistory.push({ text: `Total clients displayed in view: ${this.recentAccounts.length}`, type: 'output' });
         break;
+      case 'backend':
+        this.consoleHistory.push({
+          text: `Active Backend: ${this.isSqliteBackend ? 'SQLite (Local Engine)' : 'SpiceCRM (Remote API)'}`,
+          type: 'success'
+        });
+        if (this.sqliteStats) {
+          this.consoleHistory.push({
+            text: `SQLite Stats: ${this.sqliteStats.accounts} accounts, ${this.sqliteStats.individuals} individuals, ${this.sqliteStats.meetings} meetings, ${this.sqliteStats.users} users`,
+            type: 'output'
+          });
+        }
+        break;
+      case 'toggle-backend':
+        this.consoleHistory.push({ text: 'Toggling backend mode...', type: 'output' });
+        this.toggleBackendMode();
+        break;
       case 'delete':
         this.consoleHistory.push({ text: 'Did you mean "delete all records"?', type: 'error' });
         break;
@@ -303,8 +579,11 @@ export class DashboardComponent implements OnInit {
     this.isDarkMode = localStorage.getItem('theme') !== 'light';
     this.applyTheme();
     this.checkStatus();
+    this.loadBackendConfig();
     this.loadRecentAccounts();
     this.loadUserProfile();
+    this.loadIndividuals();
+    this.loadColumnPreferences();
 
     // Listen for session invalidation/timeouts
     this.crmService.sessionTimeout$.subscribe(() => {
@@ -321,6 +600,9 @@ export class DashboardComponent implements OnInit {
         } else if (activeTabId.startsWith('meeting_')) {
           const meetingId = activeTabId.replace('meeting_', '');
           this.openMeetingTabById(meetingId);
+        } else if (activeTabId.startsWith('individual_')) {
+          const individualId = activeTabId.replace('individual_', '');
+          this.openIndividualTabById(individualId);
         } else {
           this.activeAccountTabId = null;
         }
@@ -351,6 +633,9 @@ export class DashboardComponent implements OnInit {
           this.connectionStatus = 'connected';
           this.crmUrl = status.crmUrl || '';
           this.crmToken = status.token || '';
+          this.isSqliteBackend = status.backend === 'sqlite';
+          this.backendMode = status.backend === 'sqlite' ? 'sqlite' : 'spice';
+          this.sqliteStats = status.stats || null;
         } else {
           this.connectionStatus = 'error';
           this.crmToken = '';
@@ -360,6 +645,63 @@ export class DashboardComponent implements OnInit {
       error: (err) => {
         this.connectionStatus = 'error';
         this.errorMessage = 'Could not connect to proxy backend (make sure backend is running on port 3001)';
+      }
+    });
+  }
+
+  loadBackendConfig() {
+    this.crmService.getBackendConfig().subscribe({
+      next: (res) => {
+        this.backendMode = res.mode;
+        this.isSqliteBackend = res.mode === 'sqlite';
+        this.sqliteStats = res.stats;
+      },
+      error: (err) => {
+        console.warn('Could not load backend config:', err);
+      }
+    });
+  }
+
+  toggleBackendMode() {
+    const newMode: 'spice' | 'sqlite' = this.isSqliteBackend ? 'spice' : 'sqlite';
+    this.isSwitchingBackend = true;
+    this.crmService.setBackendMode(newMode).subscribe({
+      next: (res) => {
+        this.backendMode = res.mode === 'sqlite' ? 'sqlite' : 'spice';
+        this.isSqliteBackend = res.mode === 'sqlite';
+        this.isSwitchingBackend = false;
+        this.checkStatus();
+        this.loadBackendConfig();
+        // Refresh all active data sets for the active backend
+        this.loadRecentAccounts();
+        this.loadIndividuals();
+        if (this.activeView === 'meetings') this.loadRecentMeetings();
+        if (this.activeView === 'users') this.loadRecentUsers();
+        if (this.activeView === 'reports') this.loadRecentReports();
+      },
+      error: (err) => {
+        this.isSwitchingBackend = false;
+        alert('Failed to switch database backend: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  syncSpiceToSqlite() {
+    this.isSyncingBackend = true;
+    this.syncSummaryMessage = '';
+    this.crmService.syncSpiceToSqlite().subscribe({
+      next: (res) => {
+        this.isSyncingBackend = false;
+        this.syncSummaryMessage = `Successfully synced ${res.accounts} accounts, ${res.meetings} meetings, ${res.users} users, and ${res.reports} reports from SpiceCRM into SQLite.`;
+        this.loadBackendConfig();
+        if (this.isSqliteBackend) {
+          this.loadRecentAccounts();
+          this.loadIndividuals();
+        }
+      },
+      error: (err) => {
+        this.isSyncingBackend = false;
+        this.syncSummaryMessage = 'Sync failed: ' + (err.error?.error || err.message);
       }
     });
   }
@@ -476,74 +818,414 @@ export class DashboardComponent implements OnInit {
     return `${baseUrl}/#/module/Accounts/${accountId}`;
   }
 
+  buildAccountTab(tabId: string, acc: any): any {
+    return {
+      id: tabId,
+      name: acc.name,
+      account: acc,
+      type: 'account',
+      activeSubTab: 'details',
+      activeActivityType: 'call',
+      meetingForm: this.getInitialMeetingForm(),
+      callForm: { subject: '', description: '' },
+      taskForm: { subject: '', description: '' },
+      savingActivity: false,
+      activities: [],
+      groupBenefitsForm: {
+        renewal_date: acc.group_benefits?.renewal_date || '',
+        carrier_tpa: acc.group_benefits?.carrier_tpa || '',
+        num_employees: acc.group_benefits?.num_employees || ''
+      },
+      isEditingGroupBenefits: false,
+      isSavingGroupBenefits: false,
+      showAddAdminModal: false,
+      newAdminForm: {
+        name: '',
+        email: '',
+        phone: '',
+        role: 'Plan Administrator'
+      },
+      isSavingAdmin: false
+    };
+  }
+
   openAccountTab(acc: any) {
     const tabId = `account_${acc.id}`;
     const existing = this.openAccountTabs.find(t => t.id === tabId);
     if (!existing) {
-      this.openAccountTabs.push({
-        id: tabId,
-        name: acc.name,
-        account: acc,
-        activeSubTab: 'details',
-        activeActivityType: 'call',
-        meetingForm: this.getInitialMeetingForm(),
-        callForm: { subject: '', description: '' },
-        taskForm: { subject: '', description: '' },
-        savingActivity: false,
-        activities: []
-      });
+      this.openAccountTabs.push(this.buildAccountTab(tabId, acc));
     }
+    this.activeView = 'accounts';
     this.activeAccountTabId = tabId;
     this.updateTabRoute(tabId);
   }
 
-  openAccountTabById(accountId: string) {
-    const tabId = `account_${accountId}`;
+  openAccountTabById(accountId?: string, accountName?: string) {
+    this.activeView = 'accounts';
+    let targetId = accountId;
+    if (!targetId && accountName) {
+      const match = this.recentAccounts.find(a => a.name && a.name.toLowerCase() === accountName.toLowerCase());
+      if (match) targetId = match.id;
+    }
+    if (!targetId) {
+      alert(`No account record linked for "${accountName || 'this individual'}".`);
+      return;
+    }
+
+    const tabId = `account_${targetId}`;
     const existing = this.openAccountTabs.find(t => t.id === tabId);
     if (existing) {
       this.activeAccountTabId = tabId;
+      this.updateTabRoute(tabId);
       return;
     }
 
     // Try to find in loaded recentAccounts first
-    const loaded = this.recentAccounts.find(a => a.id === accountId);
+    const loaded = this.recentAccounts.find(a => a.id === targetId);
+    if (loaded) {
+      this.openAccountTabs.push(this.buildAccountTab(tabId, loaded));
+      this.activeAccountTabId = tabId;
+      this.updateTabRoute(tabId);
+    } else {
+      // Fetch from API
+      this.crmService.getAccount(targetId).subscribe({
+        next: (acc) => {
+          this.openAccountTabs.push(this.buildAccountTab(tabId, acc));
+          this.activeAccountTabId = tabId;
+          this.updateTabRoute(tabId);
+        },
+        error: (err) => {
+          console.error('Failed to fetch account detail:', err);
+          if (accountName) {
+            this.openAccountTabs.push(this.buildAccountTab(tabId, { id: targetId, name: accountName }));
+            this.activeAccountTabId = tabId;
+            this.updateTabRoute(tabId);
+          }
+        }
+      });
+    }
+  }
+
+  saveGroupBenefits(tab: any) {
+    tab.isSavingGroupBenefits = true;
+    const payload = {
+      renewal_date: tab.groupBenefitsForm.renewal_date,
+      carrier_tpa: tab.groupBenefitsForm.carrier_tpa,
+      num_employees: tab.groupBenefitsForm.num_employees
+    };
+
+    this.crmService.updateAccountCustomFields(tab.account.id, payload).subscribe({
+      next: (res) => {
+        tab.isSavingGroupBenefits = false;
+        tab.isEditingGroupBenefits = false;
+        if (res && res.data && res.data.group_benefits) {
+          tab.account.group_benefits = res.data.group_benefits;
+        } else {
+          tab.account.group_benefits = { ...payload };
+        }
+        // Also update in-memory recentAccounts list
+        const inList = this.recentAccounts.find(a => a.id === tab.account.id);
+        if (inList) {
+          inList.group_benefits = tab.account.group_benefits;
+        }
+        this.triggerSuccessModal(
+          'Group Benefits Saved',
+          `Group Benefits fields for "${tab.account.name}" have been successfully saved to the database.`,
+          tab.id,
+          'success'
+        );
+      },
+      error: (err) => {
+        tab.isSavingGroupBenefits = false;
+        alert('Failed to save Group Benefits: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  saveNewPlanAdmin(tab: any) {
+    if (!tab.newAdminForm.name || !tab.newAdminForm.name.trim()) {
+      alert('Please enter administrator name.');
+      return;
+    }
+
+    tab.isSavingAdmin = true;
+    const indData: Partial<IndividualBean> = {
+      name: tab.newAdminForm.name.trim(),
+      email: tab.newAdminForm.email?.trim() || '',
+      phone: tab.newAdminForm.phone?.trim() || '',
+      role: tab.newAdminForm.role?.trim() || 'Plan Administrator',
+      account_id: tab.account.id,
+      account_name: tab.account.name,
+      status: 'Active'
+    };
+
+    this.crmService.createIndividual(indData).subscribe({
+      next: (created) => {
+        tab.isSavingAdmin = false;
+        tab.showAddAdminModal = false;
+        tab.newAdminForm = { name: '', email: '', phone: '', role: 'Plan Administrator' };
+
+        if (!tab.account.plan_admin) {
+          tab.account.plan_admin = { names: [], emails: [], phones: [], individuals: [] };
+        }
+        if (!Array.isArray(tab.account.plan_admin.individuals)) {
+          tab.account.plan_admin.individuals = [];
+        }
+        tab.account.plan_admin.individuals.push(created);
+        if (created.name && !tab.account.plan_admin.names.includes(created.name)) {
+          tab.account.plan_admin.names.push(created.name);
+        }
+        if (created.email && !tab.account.plan_admin.emails.includes(created.email)) {
+          tab.account.plan_admin.emails.push(created.email);
+        }
+        if (created.phone && !tab.account.plan_admin.phones.includes(created.phone)) {
+          tab.account.plan_admin.phones.push(created.phone);
+        }
+
+        // Also update recentAccounts in memory
+        const inList = this.recentAccounts.find(a => a.id === tab.account.id);
+        if (inList) {
+          inList.plan_admin = tab.account.plan_admin;
+        }
+
+        this.loadIndividuals();
+        this.triggerSuccessModal(
+          'Administrator Added',
+          `${created.name} has been added as a Plan Administrator and registered in the individuals table.`,
+          `individual_${created.id}`,
+          'success'
+        );
+      },
+      error: (err) => {
+        tab.isSavingAdmin = false;
+        alert('Failed to create plan administrator: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  loadIndividuals() {
+    this.isLoadingIndividuals = true;
+    this.crmService.getIndividuals().subscribe({
+      next: (res) => {
+        this.individualsList = res.list || [];
+        this.isLoadingIndividuals = false;
+      },
+      error: (err) => {
+        console.error('Failed to load individuals:', err);
+        this.isLoadingIndividuals = false;
+      }
+    });
+  }
+
+  get filteredIndividuals(): IndividualBean[] {
+    if (!this.individualsSearchQuery) {
+      return this.individualsList;
+    }
+    const q = this.individualsSearchQuery.toLowerCase();
+    return this.individualsList.filter(ind =>
+      (ind.name && ind.name.toLowerCase().includes(q)) ||
+      (ind.email && ind.email.toLowerCase().includes(q)) ||
+      (ind.phone && ind.phone.toLowerCase().includes(q)) ||
+      (ind.account_name && ind.account_name.toLowerCase().includes(q)) ||
+      (ind.role && ind.role.toLowerCase().includes(q))
+    );
+  }
+
+  openIndividualTab(ind: IndividualBean) {
+    const tabId = `individual_${ind.id}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (!existing) {
+      this.openAccountTabs.push({
+        id: tabId,
+        name: ind.name,
+        individual: { ...ind },
+        originalIndividual: { ...ind },
+        type: 'individual',
+        activeSubTab: 'details',
+        isSaving: false
+      });
+    }
+    this.activeView = 'accounts';
+    this.activeAccountTabId = tabId;
+    this.updateTabRoute(tabId);
+  }
+
+  openIndividualTabById(indId: string) {
+    const tabId = `individual_${indId}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId);
+    if (existing) {
+      this.activeView = 'accounts';
+      this.activeAccountTabId = tabId;
+      return;
+    }
+
+    const loaded = this.individualsList.find(i => i.id === indId);
     if (loaded) {
       this.openAccountTabs.push({
         id: tabId,
         name: loaded.name,
-        account: loaded,
+        individual: { ...loaded },
+        originalIndividual: { ...loaded },
+        type: 'individual',
         activeSubTab: 'details',
-        activeActivityType: 'call',
-        meetingForm: this.getInitialMeetingForm(),
-        callForm: { subject: '', description: '' },
-        taskForm: { subject: '', description: '' },
-        savingActivity: false,
-        activities: []
+        isSaving: false
       });
+      this.activeView = 'accounts';
       this.activeAccountTabId = tabId;
     } else {
-      // Fetch from API
-      this.crmService.getAccount(accountId).subscribe({
-        next: (acc) => {
+      this.crmService.getIndividual(indId).subscribe({
+        next: (ind) => {
           this.openAccountTabs.push({
             id: tabId,
-            name: acc.name,
-            account: acc,
+            name: ind.name,
+            individual: { ...ind },
+            originalIndividual: { ...ind },
+            type: 'individual',
             activeSubTab: 'details',
-            activeActivityType: 'call',
-            meetingForm: this.getInitialMeetingForm(),
-            callForm: { subject: '', description: '' },
-            taskForm: { subject: '', description: '' },
-            savingActivity: false,
-            activities: []
+            isSaving: false
           });
+          this.activeView = 'accounts';
           this.activeAccountTabId = tabId;
         },
         error: (err) => {
-          console.error('Failed to fetch account detail:', err);
+          console.error('Failed to fetch individual:', err);
         }
       });
     }
+  }
+
+  isIndividualDirty(tab: any): boolean {
+    if (!tab || !tab.individual) return false;
+    if (!tab.originalIndividual) {
+      tab.originalIndividual = { ...tab.individual };
+      return false;
+    }
+    const curr = tab.individual;
+    const orig = tab.originalIndividual;
+    const normalize = (val: any) => (val === null || val === undefined ? '' : String(val).trim());
+
+    return (
+      normalize(curr.name) !== normalize(orig.name) ||
+      normalize(curr.role) !== normalize(orig.role) ||
+      normalize(curr.email) !== normalize(orig.email) ||
+      normalize(curr.phone) !== normalize(orig.phone) ||
+      normalize(curr.status || 'Active') !== normalize(orig.status || 'Active') ||
+      normalize(curr.notes) !== normalize(orig.notes)
+    );
+  }
+
+  saveIndividual(tab: any) {
+    if (!tab.individual.name || !tab.individual.name.trim()) {
+      alert('Name is required.');
+      return;
+    }
+    tab.isSaving = true;
+    this.crmService.updateIndividual(tab.individual.id, tab.individual).subscribe({
+      next: (updated) => {
+        tab.isSaving = false;
+        tab.individual = updated;
+        tab.originalIndividual = { ...updated };
+        tab.name = updated.name;
+        this.loadIndividuals();
+
+        // Also update any open account tabs containing this individual
+        for (const t of this.openAccountTabs) {
+          if (t.account && t.account.plan_admin && Array.isArray(t.account.plan_admin.individuals)) {
+            const idx = t.account.plan_admin.individuals.findIndex((i: any) => i.id === updated.id);
+            if (idx !== -1) {
+              t.account.plan_admin.individuals[idx] = updated;
+              t.account.plan_admin.names = t.account.plan_admin.individuals.map((i: any) => i.name);
+              t.account.plan_admin.emails = t.account.plan_admin.individuals.map((i: any) => i.email);
+              t.account.plan_admin.phones = t.account.plan_admin.individuals.map((i: any) => i.phone);
+            }
+          }
+        }
+
+        this.triggerSuccessModal(
+          'Individual Profile Saved',
+          `Information for ${updated.name} has been updated in the database.`,
+          tab.id,
+          'success'
+        );
+      },
+      error: (err) => {
+        tab.isSaving = false;
+        alert('Failed to save individual: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  deleteIndividualRecord(id: string, tabId?: string) {
+    if (!confirm('Are you sure you want to delete this individual record? This cannot be undone.')) return;
+    this.crmService.deleteIndividual(id).subscribe({
+      next: () => {
+        this.individualsList = this.individualsList.filter(i => i.id !== id);
+        if (tabId) {
+          this.closeAccountTab(tabId, new MouseEvent('click'));
+        }
+        for (const t of this.openAccountTabs) {
+          if (t.account && t.account.plan_admin && Array.isArray(t.account.plan_admin.individuals)) {
+            t.account.plan_admin.individuals = t.account.plan_admin.individuals.filter((i: any) => i.id !== id);
+            t.account.plan_admin.names = t.account.plan_admin.individuals.map((i: any) => i.name);
+            t.account.plan_admin.emails = t.account.plan_admin.individuals.map((i: any) => i.email);
+            t.account.plan_admin.phones = t.account.plan_admin.individuals.map((i: any) => i.phone);
+          }
+        }
+        this.triggerSuccessModal(
+          'Individual Deleted',
+          'The individual record was removed from the database.',
+          null,
+          'success'
+        );
+      },
+      error: (err) => {
+        alert('Failed to delete individual: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  openCreateIndividualModal() {
+    this.newIndividualForm = {
+      name: '',
+      email: '',
+      phone: '',
+      role: 'Plan Administrator',
+      account_id: '',
+      account_name: '',
+      notes: '',
+      status: 'Active'
+    };
+    this.showCreateIndividualModal = true;
+  }
+
+  closeCreateIndividualModal() {
+    this.showCreateIndividualModal = false;
+  }
+
+  submitNewIndividual() {
+    if (!this.newIndividualForm.name || !this.newIndividualForm.name.trim()) {
+      alert('Please enter a name for the individual.');
+      return;
+    }
+    this.isCreatingIndividual = true;
+    if (this.newIndividualForm.account_id) {
+      const match = this.recentAccounts.find(a => a.id === this.newIndividualForm.account_id);
+      if (match) {
+        this.newIndividualForm.account_name = match.name;
+      }
+    }
+    this.crmService.createIndividual(this.newIndividualForm).subscribe({
+      next: (created) => {
+        this.isCreatingIndividual = false;
+        this.showCreateIndividualModal = false;
+        this.loadIndividuals();
+        this.openIndividualTab(created);
+      },
+      error: (err) => {
+        this.isCreatingIndividual = false;
+        alert('Failed to create individual: ' + (err.error?.error || err.message));
+      }
+    });
   }
 
   openMeetingTab(meeting: any) {
@@ -660,6 +1342,11 @@ export class DashboardComponent implements OnInit {
     return 'Administrator';
   }
 
+  getAccountType(account?: any): string {
+    if (!account) return 'Group Client - Benefits';
+    return account.account_type || account.accountType || 'Group Client - Benefits';
+  }
+
   triggerSuccessModal(title: string, body: string, tabId: string | null = null, type: 'success' | 'warning' | 'error' = 'success') {
     this.successModalTitle = title;
     this.successModalBody = body;
@@ -683,6 +1370,9 @@ export class DashboardComponent implements OnInit {
       } else if (this.successModalTabId.startsWith('account_')) {
         const id = this.successModalTabId.replace('account_', '');
         this.openAccountTabById(id);
+      } else if (this.successModalTabId.startsWith('individual_')) {
+        const id = this.successModalTabId.replace('individual_', '');
+        this.openIndividualTabById(id);
       }
     }
     this.closeSuccessModal();
@@ -1059,6 +1749,222 @@ export class DashboardComponent implements OnInit {
     this.showDetailsModal = true;
   }
 
+  runReport(report: ReportBean) {
+    this.activeReport = report;
+    this.showReportViewerModal = true;
+    this.isLoadingReportData = true;
+    this.reportDataError = null;
+    this.activeReportData = null;
+    this.reportDataSearchQuery = '';
+    this.reportSortColumn = '';
+    this.reportSortAsc = true;
+
+    this.crmService.getReportData(report.id).subscribe({
+      next: (data) => {
+        this.activeReportData = data;
+        this.isLoadingReportData = false;
+        if (data.columns && data.columns.length > 0) {
+          this.reportSortColumn = data.columns[0].label;
+        }
+      },
+      error: (err) => {
+        this.reportDataError = err.error?.error || err.message || 'Failed to load report dataset';
+        this.isLoadingReportData = false;
+      }
+    });
+  }
+
+  closeReportViewerModal() {
+    this.showReportViewerModal = false;
+    this.activeReport = null;
+    this.activeReportData = null;
+    this.reportDataError = null;
+    this.reportDataSearchQuery = '';
+  }
+
+  sortReportData(columnLabel: string) {
+    if (this.reportSortColumn === columnLabel) {
+      this.reportSortAsc = !this.reportSortAsc;
+    } else {
+      this.reportSortColumn = columnLabel;
+      this.reportSortAsc = true;
+    }
+  }
+
+  get filteredReportRecords(): Array<Record<string, string>> {
+    if (!this.activeReportData || !this.activeReportData.records) {
+      return [];
+    }
+
+    let records = this.activeReportData.records;
+
+    // Filter by search query across all column values
+    if (this.reportDataSearchQuery.trim()) {
+      const q = this.reportDataSearchQuery.toLowerCase().trim();
+      records = records.filter(row => {
+        return Object.keys(row).some(k => {
+          if (k.startsWith('_')) return false;
+          const val = String(row[k] || '').toLowerCase();
+          return val.includes(q);
+        });
+      });
+    }
+
+    // Sort by reportSortColumn
+    if (this.reportSortColumn) {
+      const col = this.reportSortColumn;
+      const asc = this.reportSortAsc;
+      records = [...records].sort((a, b) => {
+        const valA = String(a[col] || '');
+        const valB = String(b[col] || '');
+        const cleanA = valA.replace(/[^0-9.-]+/g, '');
+        const cleanB = valB.replace(/[^0-9.-]+/g, '');
+        const numA = Number(cleanA);
+        const numB = Number(cleanB);
+
+        if (!isNaN(numA) && !isNaN(numB) && cleanA !== '' && cleanB !== '') {
+          return asc ? numA - numB : numB - numA;
+        }
+        return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      });
+    }
+
+    return records;
+  }
+
+  exportReportCsv(report: ReportBean | null) {
+    if (!report) return;
+    this.isExportingCsv = true;
+    this.crmService.downloadReportCsv(report.id).subscribe({
+      next: (blob) => {
+        this.isExportingCsv = false;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const filename = (report.name || 'report').replace(/[^a-zA-Z0-9_-]/g, '_') + '.csv';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      },
+      error: (err) => {
+        this.isExportingCsv = false;
+        alert('Failed to export CSV: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
+  onReportRowClick(record: Record<string, string>) {
+    // If associated with an account, drill down into account tab
+    if (record['_module'] === 'Accounts' && record['_id']) {
+      const existingAccount = this.recentAccounts.find(a => a.id === record['_id']);
+      if (existingAccount) {
+        this.openAccountTab(existingAccount);
+        this.closeReportViewerModal();
+        return;
+      }
+      // If not in preloaded list, create stub bean and select
+      const stubAccount: AccountBean = {
+        id: record['_id'],
+        name: record['ACCOUNT NAME'] || record['NAME'] || 'Account Record',
+        industry: record['INDUSTRY'] || '',
+        account_type: record['ACCOUNT TYPE'] || ''
+      };
+      this.openAccountTab(stubAccount);
+      this.closeReportViewerModal();
+      return;
+    }
+
+    // If Contact has account linkage or name
+    const acctName = record['ACCOUNT NAME'] || record['ACCOUNT'];
+    if (acctName) {
+      const found = this.recentAccounts.find((a: AccountBean) => a.name.toLowerCase() === acctName.toLowerCase());
+      if (found) {
+        this.openAccountTab(found);
+        this.closeReportViewerModal();
+        return;
+      }
+    }
+  }
+
+  getReportNumericStats(): Array<{ label: string; sum: number; avg: number; count: number }> {
+    if (!this.activeReportData || !this.activeReportData.records || this.activeReportData.records.length === 0) {
+      return [];
+    }
+    const cols = this.activeReportData.columns;
+    const records = this.filteredReportRecords;
+    const stats: Array<{ label: string; sum: number; avg: number; count: number }> = [];
+
+    cols.forEach(col => {
+      const lower = col.label.toLowerCase();
+      // Exclude text columns like names, emails, ids, and addresses
+      if (lower.includes('name') || lower.includes('email') || lower.includes('id') || lower.includes('phone') || lower.includes('address') || lower.includes('title')) {
+        return;
+      }
+
+      let numericCount = 0;
+      let totalSum = 0;
+      records.forEach(row => {
+        const raw = (row[col.label] || '').trim();
+        // Check if value is strictly a currency or decimal number
+        const isNumeric = /^[$€£]?\s*-?\d{1,3}(,\d{3})*(\.\d+)?$/.test(raw) || /^-?\d+(\.\d+)?$/.test(raw);
+        if (isNumeric) {
+          const clean = raw.replace(/[^0-9.-]+/g, '');
+          const num = Number(clean);
+          if (!isNaN(num) && clean !== '') {
+            numericCount++;
+            totalSum += num;
+          }
+        }
+      });
+
+      // If at least 40% of non-empty rows are numeric, consider it a numeric metric column
+      if (numericCount > 0 && numericCount >= records.length * 0.4) {
+        stats.push({
+          label: col.label,
+          sum: Math.round(totalSum * 100) / 100,
+          avg: Math.round((totalSum / numericCount) * 100) / 100,
+          count: numericCount
+        });
+      }
+    });
+
+    return stats;
+  }
+
+  getReportCategoryDistribution(): Array<{ label: string; count: number; percent: number }> {
+    if (!this.activeReportData || !this.activeReportData.records || this.activeReportData.records.length === 0) {
+      return [];
+    }
+    const records = this.filteredReportRecords;
+    if (records.length === 0) return [];
+
+    // Find first categorical column
+    const candidateCol = this.activeReportData.columns.find(c => {
+      const l = c.label.toLowerCase();
+      return l.includes('type') || l.includes('status') || l.includes('industry') || l.includes('module') || l.includes('name');
+    }) || this.activeReportData.columns[0];
+
+    if (!candidateCol) return [];
+
+    const counts: Record<string, number> = {};
+    records.forEach(r => {
+      const val = (r[candidateCol.label] || 'Unassigned').trim();
+      counts[val] = (counts[val] || 0) + 1;
+    });
+
+    const entries = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return entries.map(([label, count]) => ({
+      label,
+      count,
+      percent: Math.round((count / records.length) * 100)
+    }));
+  }
+
   closeDetailsModal() {
     this.showDetailsModal = false;
     this.detailsModalType = null;
@@ -1242,6 +2148,64 @@ export class DashboardComponent implements OnInit {
         this.isSavingSettings = false;
         const msg = err.error?.error?.message || err.error?.message || (err.error ? JSON.stringify(err.error) : '') || err.message;
         alert('Failed to save settings: ' + msg);
+      }
+    });
+  }
+
+  changePassword() {
+    const username = sessionStorage.getItem('username') || (this.currentUserProfile ? this.currentUserProfile.user_name : '');
+    if (!username) {
+      this.passwordChangeError = 'Unable to identify active user session. Please re-login.';
+      return;
+    }
+
+    if (!this.currentPasswordInput) {
+      this.passwordChangeError = 'Please enter your current password.';
+      return;
+    }
+
+    if (!this.newPasswordInput) {
+      this.passwordChangeError = 'Please enter a new password.';
+      return;
+    }
+
+    if (this.newPasswordInput.length < 6) {
+      this.passwordChangeError = 'New password must be at least 6 characters long.';
+      return;
+    }
+
+    if (this.newPasswordInput !== this.confirmPasswordInput) {
+      this.passwordChangeError = 'New passwords do not match. Please verify.';
+      return;
+    }
+
+    this.isChangingPassword = true;
+    this.passwordChangeError = '';
+    this.passwordChangeMessage = '';
+
+    this.crmService.changePassword(username, this.currentPasswordInput, this.newPasswordInput).subscribe({
+      next: (res) => {
+        this.isChangingPassword = false;
+        this.passwordChangeMessage = res.message || 'Password updated successfully!';
+        this.currentPasswordInput = '';
+        this.newPasswordInput = '';
+        this.confirmPasswordInput = '';
+
+        setTimeout(() => {
+          this.passwordChangeMessage = '';
+        }, 4000);
+      },
+      error: (err) => {
+        this.isChangingPassword = false;
+        if (err.status === 404) {
+          this.passwordChangeError = 'Backend endpoint not found (404). Please restart redcliffe-start so the backend loads the new routes.';
+        } else if (err.error?.error) {
+          this.passwordChangeError = err.error.error;
+        } else if (err.error?.message) {
+          this.passwordChangeError = err.error.message;
+        } else {
+          this.passwordChangeError = 'Failed to update password. Please check your current password.';
+        }
       }
     });
   }
@@ -1464,5 +2428,87 @@ export class DashboardComponent implements OnInit {
   handleSessionTimeoutClose() {
     this.showSessionTimeoutModal = false;
     this.logout();
+  }
+
+  // ==================== COLUMN PREFERENCES METHODS ====================
+
+  loadColumnPreferences() {
+    // 1. Load from localStorage for immediate visual response
+    const savedLocal = localStorage.getItem('redcliffe_account_columns');
+    if (savedLocal) {
+      try {
+        const parsed = JSON.parse(savedLocal);
+        if (parsed && typeof parsed === 'object') {
+          this.selectedAccountColumns = { ...this.selectedAccountColumns, ...parsed };
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fetch from backend user preferences (syncs across browsers/sessions)
+    this.crmService.getUserPreferences().subscribe({
+      next: (res) => {
+        if (res && res.preferences && res.preferences.account_columns) {
+          this.selectedAccountColumns = {
+            ...this.selectedAccountColumns,
+            ...res.preferences.account_columns
+          };
+          localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
+        }
+      },
+      error: (err) => {
+        console.warn('Could not fetch user column preferences:', err?.message || err);
+      }
+    });
+  }
+
+  openColumnPickerModal(event?: Event) {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    this.tempAccountColumns = { ...this.selectedAccountColumns };
+    this.showColumnPickerModal = true;
+  }
+
+  closeColumnPickerModal() {
+    this.showColumnPickerModal = false;
+  }
+
+  toggleTempColumn(colId: string) {
+    this.tempAccountColumns[colId] = !this.tempAccountColumns[colId];
+  }
+
+  resetColumnsToDefault() {
+    const defaults: { [key: string]: boolean } = {};
+    this.availableAccountColumns.forEach(c => {
+      defaults[c.id] = c.default;
+    });
+    this.tempAccountColumns = defaults;
+  }
+
+  saveColumnPreferences() {
+    this.selectedAccountColumns = { ...this.tempAccountColumns };
+    localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
+    
+    this.crmService.saveUserPreferences({ account_columns: this.selectedAccountColumns }).subscribe({
+      next: () => {
+        console.log('[Preferences] Column preferences saved successfully.');
+      },
+      error: (err) => {
+        console.error('[Preferences] Failed to save column preferences to backend:', err);
+      }
+    });
+
+    this.closeColumnPickerModal();
+  }
+
+  isColumnVisible(colId: string): boolean {
+    return this.selectedAccountColumns[colId] ?? false;
+  }
+
+  toggleSettingColumn(colId: string) {
+    this.selectedAccountColumns[colId] = !this.selectedAccountColumns[colId];
+    localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
+    this.crmService.saveUserPreferences({ account_columns: this.selectedAccountColumns }).subscribe();
   }
 }

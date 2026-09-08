@@ -44,6 +44,15 @@
         <span class="btn-nav-text">Meetings</span>
       </button>
       <button 
+        (click)="selectApp('Individuals')" 
+        class="btn-nav-icon" 
+        [class.active]="activeView === 'individuals'" 
+        title="Individuals"
+      >
+        <span class="material-icons-round">badge</span>
+        <span class="btn-nav-text">Individuals</span>
+      </button>
+      <button 
         (click)="selectApp('Users')" 
         class="btn-nav-icon" 
         [class.active]="activeView === 'users'" 
@@ -71,7 +80,7 @@
       }"></div>
       <span class="status-label">
         <ng-container [ngSwitch]="connectionStatus">
-          <span *ngSwitchCase="'connected'">Connected to SpiceCRM</span>
+          <span *ngSwitchCase="'connected'">{{ isSqliteBackend ? 'Connected to SQLite' : 'Connected to SpiceCRM' }}</span>
           <span *ngSwitchCase="'checking'">Verifying Connection...</span>
           <span *ngSwitchCase="'error'">CRM Connection Error</span>
         </ng-container>
@@ -96,7 +105,7 @@
   </header>
 
   <!-- Dashboard Content Grid -->
-  <main class="dashboard-grid" [class.collapsed-sidebar]="isImportPanelCollapsed && activeView === 'accounts' && currentRole === 'Admin'" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings'">
+  <main class="dashboard-grid" [class.collapsed-sidebar]="isImportPanelCollapsed && activeView === 'accounts' && currentRole === 'Admin'" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings' || activeView === 'individuals'">
     <!-- Left Panel: CSV Import Actions -->
     <section *ngIf="currentRole === 'Admin' && activeView === 'accounts'" class="panel-import glass-panel glow-effect" [class.collapsed]="isImportPanelCollapsed">
       <!-- Expanded State Content -->
@@ -236,7 +245,7 @@
             [class.active]="activeAccountTabId === tab.id"
           >
             <span class="material-icons-round" style="font-size: 16px;">
-              {{ tab.type === 'meeting' ? 'calendar_month' : 'business' }}
+              {{ tab.type === 'meeting' ? 'calendar_month' : (tab.type === 'individual' ? 'badge' : 'business') }}
             </span>
             {{ tab.name }}
           </button>
@@ -297,40 +306,72 @@
           <table *ngIf="filteredAccounts.length > 0" class="accounts-table">
             <thead>
               <tr>
-                <th>Client Name</th>
-                <th>Email</th>
-                <th>Website</th>
-                <th>Location</th>
-                <th *ngIf="currentRole === 'Admin'" style="width: 80px; text-align: center;">Actions</th>
+                <th *ngIf="isColumnVisible('name')">Client Name</th>
+                <th *ngIf="isColumnVisible('email')">Email</th>
+                <th *ngIf="isColumnVisible('website')">Website</th>
+                <th *ngIf="isColumnVisible('location')">Location</th>
+                <th *ngIf="isColumnVisible('industry')">Industry</th>
+                <th *ngIf="isColumnVisible('account_type')">Account Type</th>
+                <th *ngIf="isColumnVisible('renewal_date')">Renewal Date</th>
+                <th *ngIf="isColumnVisible('carrier_tpa')">Carrier / TPA</th>
+                <th *ngIf="isColumnVisible('num_employees')">Employees</th>
+                <th *ngIf="isColumnVisible('description')">Description</th>
+                <th style="width: 80px; text-align: right; padding-right: 14px;">
+                  <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                    <span *ngIf="currentRole === 'Admin'" style="font-size: 11px; text-transform: uppercase;">Actions</span>
+                    <button (click)="openColumnPickerModal($event)" class="btn-column-edit" title="Customize visible columns">
+                      <span class="material-icons-round" style="font-size: 16px;">edit</span>
+                    </button>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let acc of filteredAccounts" class="account-row">
-                <td class="cell-name">
+                <td *ngIf="isColumnVisible('name')" class="cell-name">
                   <span class="material-icons-round avatar">business</span>
                   <div class="cell-text">
                     <a [href]="getAccountCrmUrl(acc.id)" (click)="openAccountTab(acc); $event.preventDefault();" class="client-detail-link name-text">
                       {{ acc.name }}
                     </a>
-                    <span class="industry-badge" *ngIf="acc.industry">{{ acc.industry }}</span>
+                    <span class="industry-badge" *ngIf="acc.industry && !isColumnVisible('industry')">{{ acc.industry }}</span>
                   </div>
                 </td>
-                <td>{{ acc.email1 || '—' }}</td>
-                <td>
+                <td *ngIf="isColumnVisible('email')">{{ acc.email1 || '—' }}</td>
+                <td *ngIf="isColumnVisible('website')">
                   <a *ngIf="acc.website" [href]="acc.website" target="_blank" class="web-link">
                     <span>{{ acc.website.replace('https://', '').replace('http://', '').replace('www.', '') }}</span>
                     <span class="material-icons-round link-icon">open_in_new</span>
                   </a>
                   <span *ngIf="!acc.website">—</span>
                 </td>
-                <td>
+                <td *ngIf="isColumnVisible('location')">
                   <span class="location-badge" *ngIf="acc.shipping_address_city">
                     {{ acc.shipping_address_city }}, {{ acc.shipping_address_state || 'Canada' }}
                   </span>
                   <span *ngIf="!acc.shipping_address_city">—</span>
                 </td>
-                <td *ngIf="currentRole === 'Admin'" style="text-align: center;">
-                  <button class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
+                <td *ngIf="isColumnVisible('industry')">
+                  <span class="industry-badge" *ngIf="acc.industry">{{ acc.industry }}</span>
+                  <span *ngIf="!acc.industry">—</span>
+                </td>
+                <td *ngIf="isColumnVisible('account_type')">
+                  <span>{{ acc.account_type || '—' }}</span>
+                </td>
+                <td *ngIf="isColumnVisible('renewal_date')">
+                  <span>{{ acc.renewal_date || acc.group_benefits?.renewal_date || '—' }}</span>
+                </td>
+                <td *ngIf="isColumnVisible('carrier_tpa')">
+                  <span>{{ acc.carrier_tpa || acc.group_benefits?.carrier_tpa || '—' }}</span>
+                </td>
+                <td *ngIf="isColumnVisible('num_employees')">
+                  <span>{{ acc.num_employees || acc.group_benefits?.num_employees || '—' }}</span>
+                </td>
+                <td *ngIf="isColumnVisible('description')" style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span [title]="acc.description || ''">{{ acc.description || '—' }}</span>
+                </td>
+                <td style="text-align: right; padding-right: 14px;">
+                  <button *ngIf="currentRole === 'Admin'" class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
                     <span class="material-icons-round">delete</span>
                   </button>
                 </td>
@@ -342,7 +383,7 @@
 
       <!-- VIEW 2: Account Detail (when activeAccountTabId is not null) -->
       <ng-container *ngIf="activeAccountTabId !== null">
-        <div *ngFor="let tab of openAccountTabs">
+        <ng-container *ngFor="let tab of openAccountTabs">
           <div *ngIf="activeAccountTabId === tab.id" class="account-detail-view animate-fade-in">
             
             <!-- CASE A: MEETING WORKSPACE DETAILS -->
@@ -512,12 +553,6 @@
                           {{ tab.meeting.date_modified || tab.meeting.date_start || '2026-07-31 10:00:00' }}
                         </span>
                       </div>
-                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
-                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Meeting ID</span>
-                        <span class="meta-value font-mono select-all" style="font-size: 11px; word-break: break-all; opacity: 0.8;">
-                          {{ tab.meeting.id }}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -525,18 +560,28 @@
             </ng-container>
 
             <!-- CASE B: ORIGINAL ACCOUNT WORKSPACE DETAILS -->
-            <ng-container *ngIf="tab.type !== 'meeting'">
+            <ng-container *ngIf="!tab.type || tab.type === 'account'">
               <!-- Account Details Header Card -->
               <div class="account-detail-header-card">
-              <div class="header-avatar">
-                <span class="material-icons-round">business</span>
+                <div class="header-avatar">
+                  <span class="material-icons-round">business</span>
+                </div>
+                <div class="header-info">
+                  <span class="header-type-label">ACCOUNT</span>
+                  <h2 class="header-title">{{ tab.account.name }}</h2>
+                  <div class="header-headline-meta">
+                    <div class="headline-meta-item">
+                      <span class="meta-label">Account Type:</span>
+                      <span class="meta-value type-highlight">{{ getAccountType(tab.account) }}</span>
+                    </div>
+                    <span class="headline-meta-separator" *ngIf="tab.account.industry">•</span>
+                    <div class="headline-meta-item" *ngIf="tab.account.industry">
+                      <span class="meta-label">Industry:</span>
+                      <span class="meta-value industry-highlight">{{ tab.account.industry }}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="header-info">
-                <span class="header-type-label">ACCOUNT</span>
-                <h2 class="header-title">{{ tab.account.name }}</h2>
-                <span class="header-subtitle" *ngIf="tab.account.industry">{{ tab.account.industry }}</span>
-              </div>
-            </div>
 
             <!-- Detail Grid Layout -->
             <div class="account-detail-grid">
@@ -553,20 +598,16 @@
                   <div class="info-group">
                     <div class="info-row">
                       <div class="info-item">
-                        <span class="info-label">Account ID</span>
-                        <span class="info-value font-mono select-all">{{ tab.account.id }}</span>
+                        <span class="info-label">Account Type</span>
+                        <span class="info-value">{{ getAccountType(tab.account) }}</span>
                       </div>
-                      <div class="info-item" *ngIf="tab.account.industry">
+                      <div class="info-item">
                         <span class="info-label">Industry</span>
-                        <span class="info-value">{{ tab.account.industry }}</span>
+                        <span class="info-value">{{ tab.account.industry || '—' }}</span>
                       </div>
                     </div>
 
                     <div class="info-row">
-                      <div class="info-item">
-                        <span class="info-label">Email</span>
-                        <span class="info-value">{{ tab.account.email1 || '—' }}</span>
-                      </div>
                       <div class="info-item">
                         <span class="info-label">Website</span>
                         <span class="info-value">
@@ -577,13 +618,13 @@
                           <span *ngIf="!tab.account.website">—</span>
                         </span>
                       </div>
-                    </div>
-
-                    <div class="info-row" *ngIf="tab.account.shipping_address_city">
                       <div class="info-item">
                         <span class="info-label">Address</span>
                         <span class="info-value">
-                          {{ tab.account.shipping_address_city }}, {{ tab.account.shipping_address_state || 'Canada' }}
+                          <ng-container *ngIf="tab.account.shipping_address_city">
+                            {{ tab.account.shipping_address_city }}, {{ tab.account.shipping_address_state || 'Canada' }}
+                          </ng-container>
+                          <span *ngIf="!tab.account.shipping_address_city">—</span>
                         </span>
                       </div>
                     </div>
@@ -592,6 +633,209 @@
                       <span class="info-label">Description</span>
                       <div class="info-description-box">
                         {{ tab.account.description }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- SECTION: PLAN ADMIN -->
+                  <div class="info-group" style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons-round" style="color: #38bdf8; font-size: 20px;">badge</span>
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary); letter-spacing: 0.02em;">Plan Admin</h3>
+                      </div>
+                      <button (click)="tab.showAddAdminModal = !tab.showAddAdminModal" class="btn btn-secondary" style="padding: 5px 12px; font-size: 11px; display: flex; align-items: center; gap: 6px; border-radius: var(--border-radius-sm);">
+                        <span class="material-icons-round" style="font-size: 14px;">{{ tab.showAddAdminModal ? 'close' : 'person_add' }}</span>
+                        {{ tab.showAddAdminModal ? 'Cancel' : 'Add Plan Administrator' }}
+                      </button>
+                    </div>
+
+                    <!-- Add Plan Administrator Form (Collapsible) -->
+                    <div *ngIf="tab.showAddAdminModal" class="glass-panel" style="margin-bottom: 16px; padding: 16px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
+                      <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
+                        New Plan Administrator (Saved to Individuals Database)
+                      </div>
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Full Name *</label>
+                          <input type="text" [(ngModel)]="tab.newAdminForm.name" placeholder="e.g. Eleanor Vance" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Role / Title</label>
+                          <input type="text" [(ngModel)]="tab.newAdminForm.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Email Address</label>
+                          <input type="email" [(ngModel)]="tab.newAdminForm.email" placeholder="e.g. admin@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Phone Number</label>
+                          <input type="tel" [(ngModel)]="tab.newAdminForm.phone" placeholder="e.g. (604) 555-0142" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                      </div>
+                      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                        <button (click)="tab.showAddAdminModal = false" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">Cancel</button>
+                        <button (click)="saveNewPlanAdmin(tab)" class="btn btn-primary" [disabled]="tab.isSavingAdmin" style="padding: 6px 16px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                          <span class="material-icons-round" style="font-size: 14px;" [class.spinning]="tab.isSavingAdmin">{{ tab.isSavingAdmin ? 'sync' : 'save' }}</span>
+                          Save Administrator
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Explicit 3-List Display matching specification: Names, Emails, Phone numbers -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); border-radius: 8px; padding: 14px;">
+                      <!-- Names List -->
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                          <span class="material-icons-round" style="font-size: 13px;">person</span>
+                          Names (Click to view Individual)
+                        </span>
+                        <div *ngIf="!tab.account.plan_admin?.names || tab.account.plan_admin.names.length === 0" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">
+                          No administrators listed
+                        </div>
+                        <ul *ngIf="tab.account.plan_admin?.names && tab.account.plan_admin.names.length > 0" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                          <li *ngFor="let name of tab.account.plan_admin.names; let i = index">
+                            <a 
+                              href="javascript:void(0)"
+                              (click)="openIndividualTab(tab.account.plan_admin.individuals[i])" 
+                              class="client-detail-link" 
+                              style="font-size: 12px; font-weight: 600; color: #38bdf8; display: inline-flex; align-items: center; gap: 4px;"
+                              title="Open individual page for {{ name }}"
+                            >
+                              <span class="material-icons-round" style="font-size: 13px;">open_in_new</span>
+                              {{ name }}
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <!-- Emails List -->
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                          <span class="material-icons-round" style="font-size: 13px;">email</span>
+                          Emails
+                        </span>
+                        <div *ngIf="!tab.account.plan_admin?.emails || tab.account.plan_admin.emails.length === 0" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">
+                          —
+                        </div>
+                        <ul *ngIf="tab.account.plan_admin?.emails && tab.account.plan_admin.emails.length > 0" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                          <li *ngFor="let email of tab.account.plan_admin.emails">
+                            <a [href]="'mailto:' + email" style="font-size: 12px; color: var(--color-text-primary); text-decoration: none; opacity: 0.9;">
+                              {{ email }}
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <!-- Phone Numbers List -->
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                          <span class="material-icons-round" style="font-size: 13px;">phone</span>
+                          Phone Numbers
+                        </span>
+                        <div *ngIf="!tab.account.plan_admin?.phones || tab.account.plan_admin.phones.length === 0" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">
+                          —
+                        </div>
+                        <ul *ngIf="tab.account.plan_admin?.phones && tab.account.plan_admin.phones.length > 0" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                          <li *ngFor="let phone of tab.account.plan_admin.phones">
+                            <a [href]="'tel:' + phone" style="font-size: 12px; color: var(--color-text-primary); text-decoration: none; opacity: 0.9;">
+                              {{ phone }}
+                            </a>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    <!-- Administrator Cards Row -->
+                    <div *ngIf="tab.account.plan_admin?.individuals && tab.account.plan_admin.individuals.length > 0" style="display: flex; flex-direction: column; gap: 8px;">
+                      <div *ngFor="let ind of tab.account.plan_admin.individuals" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(15, 23, 42, 0.3); border: 1px solid var(--glass-border); border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <span class="material-icons-round" style="padding: 6px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 18px;">badge</span>
+                          <div>
+                            <a href="javascript:void(0)" (click)="openIndividualTab(ind)" class="client-detail-link" style="font-weight: 600; font-size: 13px; color: #f8fafc; text-decoration: none;">
+                              {{ ind.name }}
+                            </a>
+                            <div style="font-size: 11px; color: var(--color-text-muted); display: flex; gap: 12px; margin-top: 2px;">
+                              <span>{{ ind.role || 'Plan Administrator' }}</span>
+                              <span *ngIf="ind.email">· {{ ind.email }}</span>
+                              <span *ngIf="ind.phone">· {{ ind.phone }}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button (click)="openIndividualTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                          <span class="material-icons-round" style="font-size: 13px;">open_in_new</span>
+                          View Individual Page
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- SECTION: GROUP BENEFITS -->
+                  <div class="info-group" style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons-round" style="color: #10b981; font-size: 20px;">health_and_safety</span>
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary); letter-spacing: 0.02em;">Group Benefits</h3>
+                      </div>
+                      <button *ngIf="!tab.isEditingGroupBenefits" (click)="tab.isEditingGroupBenefits = true" class="btn btn-secondary" style="padding: 5px 12px; font-size: 11px; display: flex; align-items: center; gap: 6px; border-radius: var(--border-radius-sm);">
+                        <span class="material-icons-round" style="font-size: 14px;">edit</span>
+                        Edit Group Benefits
+                      </button>
+                      <div *ngIf="tab.isEditingGroupBenefits" style="display: flex; gap: 8px;">
+                        <button (click)="tab.isEditingGroupBenefits = false" class="btn btn-secondary" style="padding: 5px 12px; font-size: 11px;">
+                          Cancel
+                        </button>
+                        <button (click)="saveGroupBenefits(tab)" class="btn btn-primary" [disabled]="tab.isSavingGroupBenefits" style="padding: 5px 14px; font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                          <span class="material-icons-round" style="font-size: 14px;" [class.spinning]="tab.isSavingGroupBenefits">{{ tab.isSavingGroupBenefits ? 'sync' : 'check' }}</span>
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- VIEW MODE: 3 Fields -->
+                    <div *ngIf="!tab.isEditingGroupBenefits" class="info-row">
+                      <div class="info-item">
+                        <span class="info-label">Renewal Date</span>
+                        <span class="info-value">
+                          {{ tab.account.group_benefits?.renewal_date ? (tab.account.group_benefits?.renewal_date | date:'longDate') : '—' }}
+                        </span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">Carrier/TPA</span>
+                        <span class="info-value">
+                          {{ tab.account.group_benefits?.carrier_tpa || '—' }}
+                        </span>
+                      </div>
+                      <div class="info-item">
+                        <span class="info-label">Number of Employees</span>
+                        <span class="info-value">
+                          {{ tab.account.group_benefits?.num_employees || '—' }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- EDIT MODE: 3 Editable Fields -->
+                    <div *ngIf="tab.isEditingGroupBenefits" class="glass-panel" style="padding: 16px; border-radius: 8px; background: rgba(16, 185, 129, 0.03); border: 1px solid rgba(16, 185, 129, 0.2);">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Renewal Date</label>
+                          <input type="date" [(ngModel)]="tab.groupBenefitsForm.renewal_date" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Carrier/TPA</label>
+                          <input type="text" [(ngModel)]="tab.groupBenefitsForm.carrier_tpa" placeholder="e.g. GroupSource, Sun Life" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Number of Employees</label>
+                          <input type="number" [(ngModel)]="tab.groupBenefitsForm.num_employees" placeholder="e.g. 45" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                      </div>
+                      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;">
+                        <button (click)="tab.isEditingGroupBenefits = false" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">Cancel</button>
+                        <button (click)="saveGroupBenefits(tab)" class="btn btn-primary" [disabled]="tab.isSavingGroupBenefits" style="padding: 6px 16px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                          <span class="material-icons-round" style="font-size: 14px;" [class.spinning]="tab.isSavingGroupBenefits">{{ tab.isSavingGroupBenefits ? 'sync' : 'save' }}</span>
+                          Save Group Benefits
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -751,9 +995,244 @@
               </div>
             </div>
             </ng-container>
+
+            <!-- CASE C: INDIVIDUAL WORKSPACE DETAILS -->
+            <ng-container *ngIf="tab.type === 'individual'">
+              <!-- Individual Details Header Card -->
+              <div class="account-detail-header-card">
+                <div class="header-avatar" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+                  <span class="material-icons-round">badge</span>
+                </div>
+                <div class="header-info">
+                  <span class="header-type-label" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">INDIVIDUAL PROFILE</span>
+                  <h2 class="header-title">{{ tab.individual.name }}</h2>
+                  <span class="header-subtitle">{{ tab.individual.role || 'Plan Administrator' }}</span>
+                </div>
+              </div>
+
+              <!-- Detail Grid Layout -->
+              <div class="account-detail-grid">
+                <!-- Left Column: Details (70%) -->
+                <div class="detail-column-left">
+                  <div class="sub-tab-content">
+                    <div class="info-group">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary);">Individual Information</h3>
+                        <span class="status-badge" [ngClass]="{'status-held': tab.individual.status === 'Active', 'status-notheld': tab.individual.status !== 'Active'}">
+                          {{ tab.individual.status || 'Active' }}
+                        </span>
+                      </div>
+
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Full Name *</label>
+                          <input type="text" [(ngModel)]="tab.individual.name" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Role / Title</label>
+                          <input type="text" [(ngModel)]="tab.individual.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Email Address</label>
+                          <input type="email" [(ngModel)]="tab.individual.email" placeholder="admin@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Phone Number</label>
+                          <input type="tel" [(ngModel)]="tab.individual.phone" placeholder="(604) 555-0100" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
+                          <select [(ngModel)]="tab.individual.status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.6); color: #fff;">
+                            <option value="Active">Active</option>
+                            <option value="Inactive">Inactive</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Associated Account</label>
+                          <div class="associated-account-box">
+                            <a *ngIf="tab.individual.account_id || tab.individual.account_name" href="javascript:void(0)" (click)="openAccountTabById(tab.individual.account_id, tab.individual.account_name)" class="client-detail-link associated-account-link" title="Open account details">
+                              <span class="material-icons-round">business</span>
+                              <span>{{ tab.individual.account_name || 'View Account' }}</span>
+                            </a>
+                            <span *ngIf="!tab.individual.account_id && !tab.individual.account_name" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">Not linked to account</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style="margin-bottom: 20px;">
+                        <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Notes & Remarks</label>
+                        <textarea [(ngModel)]="tab.individual.notes" placeholder="Additional notes regarding this plan administrator..." class="activity-textarea" style="min-height: 80px; width: 100%; box-sizing: border-box;"></textarea>
+                      </div>
+
+                      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border); padding-top: 16px;">
+                        <button (click)="deleteIndividualRecord(tab.individual.id, tab.id)" class="btn-text-danger" title="Delete Individual">
+                          <span class="material-icons-round" style="font-size: 16px;">delete</span>
+                          <span>Delete Individual</span>
+                        </button>
+                        <button *ngIf="isIndividualDirty(tab)" (click)="saveIndividual(tab)" class="btn-text-save animate-fade-in" [disabled]="tab.isSaving" title="Save Changes">
+                          <span class="material-icons-round" style="font-size: 16px;" [class.spinning]="tab.isSaving">{{ tab.isSaving ? 'sync' : 'save' }}</span>
+                          <span>Save Changes</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Column: Metadata (30%) -->
+                <div class="detail-column-right">
+                  <div class="glass-panel" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                    <h3 style="margin: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">
+                      Record Details
+                    </h3>
+                    <div class="meta-list" style="display: flex; flex-direction: column; gap: 12px;">
+                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Created At</span>
+                        <span class="meta-value" style="font-size: 12px; font-weight: 500;">
+                          {{ tab.individual.created_at ? (tab.individual.created_at | date:'medium') : '—' }}
+                        </span>
+                      </div>
+                      <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
+                        <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Last Updated</span>
+                        <span class="meta-value" style="font-size: 12px; font-weight: 500;">
+                          {{ tab.individual.updated_at ? (tab.individual.updated_at | date:'medium') : '—' }}
+                        </span>
+                      </div>
+                      <div *ngIf="tab.individual.account_id || tab.individual.account_name" class="meta-item" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--glass-border);">
+                        <button (click)="openAccountTabById(tab.individual.account_id, tab.individual.account_name)" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                          <span class="material-icons-round" style="font-size: 15px;">business</span>
+                          Go to {{ tab.individual.account_name || 'Account' }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+        </ng-container>
+      </ng-container>
+    </section>
+
+    <!-- Center Panel: Individuals in Database Directory View -->
+    <section *ngIf="activeView === 'individuals'" class="panel-crm-records glass-panel">
+      <div class="panel-header" style="justify-content: space-between;">
+        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
+          <span class="material-icons-round header-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);">badge</span>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">All Individuals</h2>
+          
+          <!-- Search Bar -->
+          <div class="meetings-search-box">
+            <span class="material-icons-round">search</span>
+            <input 
+              type="text" 
+              [(ngModel)]="individualsSearchQuery" 
+              placeholder="Search Individuals (Name, Email, Phone, Account)..."
+              class="meetings-search-input"
+              style="width: 300px;"
+            >
           </div>
         </div>
-      </ng-container>
+
+        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;">
+            {{ filteredIndividuals.length }} of {{ individualsList.length }} Items
+          </span>
+          <button (click)="openCreateIndividualModal()" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <span class="material-icons-round" style="font-size: 16px;">person_add</span>
+            Add Individual
+          </button>
+          <button (click)="loadIndividuals()" class="btn btn-secondary btn-icon" title="Refresh individuals list" [disabled]="isLoadingIndividuals">
+            <span class="material-icons-round" [class.spinning]="isLoadingIndividuals">sync</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Individuals Table -->
+      <div class="table-container">
+        <div *ngIf="isLoadingIndividuals && individualsList.length === 0" class="loading-state">
+          <span class="material-icons-round spinning loading-icon">sync</span>
+          <p>Fetching individuals from database...</p>
+        </div>
+
+        <div *ngIf="!isLoadingIndividuals && filteredIndividuals.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon" style="color: #38bdf8;">badge</span>
+          <h3>No Individuals Found</h3>
+          <p>No individual records match your search or exist in the database yet.</p>
+          <button (click)="openCreateIndividualModal()" class="btn btn-primary" style="margin-top: 12px; padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="material-icons-round" style="font-size: 16px;">add</span>
+            Create New Individual
+          </button>
+        </div>
+
+        <table *ngIf="filteredIndividuals.length > 0" class="accounts-table">
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;"><input type="checkbox"></th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Organization / Account</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th style="text-align: right; padding-right: 20px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let ind of filteredIndividuals" class="account-row">
+              <td style="text-align: center;"><input type="checkbox"></td>
+              <td class="cell-name">
+                <span class="material-icons-round avatar" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8;">badge</span>
+                <a href="javascript:void(0)" (click)="openIndividualTab(ind)" class="client-detail-link name-text meeting-row-name" title="Open individual page">
+                  {{ ind.name }}
+                </a>
+              </td>
+              <td>
+                <span class="industry-badge" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8; font-weight: 600;">
+                  {{ ind.role || 'Plan Administrator' }}
+                </span>
+              </td>
+              <td>
+                <a *ngIf="ind.account_id || ind.account_name" href="javascript:void(0)" (click)="openAccountTabById(ind.account_id, ind.account_name)" class="client-detail-link associated-account-link" title="Open account details">
+                  <span class="material-icons-round">business</span>
+                  <span>{{ ind.account_name || 'View Account' }}</span>
+                </a>
+                <span *ngIf="!ind.account_id && !ind.account_name" style="color: #64748b;">—</span>
+              </td>
+              <td>
+                <a *ngIf="ind.email" [href]="'mailto:' + ind.email" style="color: var(--color-text-primary); text-decoration: none;">
+                  {{ ind.email }}
+                </a>
+                <span *ngIf="!ind.email" style="color: #64748b;">—</span>
+              </td>
+              <td>
+                <a *ngIf="ind.phone" [href]="'tel:' + ind.phone" style="color: var(--color-text-primary); text-decoration: none;">
+                  {{ ind.phone }}
+                </a>
+                <span *ngIf="!ind.phone" style="color: #64748b;">—</span>
+              </td>
+              <td>
+                <span class="status-badge" [ngClass]="{
+                  'status-held': ind.status === 'Active' || !ind.status,
+                  'status-notheld': ind.status === 'Inactive'
+                }">
+                  {{ ind.status || 'Active' }}
+                </span>
+              </td>
+              <td style="text-align: right; padding-right: 20px;">
+                <div style="display: inline-flex; gap: 8px;">
+                  <button (click)="openIndividualTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
+                    <span class="material-icons-round" style="font-size: 14px;">open_in_new</span>
+                    Profile
+                  </button>
+                  <button (click)="deleteIndividualRecord(ind.id)" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" title="Delete individual">
+                    <span class="material-icons-round" style="font-size: 14px;">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Right Panel: Meetings in CRM (Replicated View) -->
@@ -915,9 +1394,9 @@
             <tr *ngFor="let report of filteredReports" class="account-row">
               <td style="text-align: center;"><input type="checkbox"></td>
               <td class="cell-name">
-                <span class="material-icons-round avatar" style="background: rgba(20, 184, 166, 0.1); color: #14b8a6;">assessment</span>
+                <span class="material-icons-round avatar" style="background: rgba(20, 184, 166, 0.1); color: #14b8a6; cursor: pointer;" (click)="runReport(report)" title="Run Report">assessment</span>
                 <div class="cell-text">
-                  <span class="name-text meeting-row-name">{{ report.name }}</span>
+                  <span class="name-text meeting-row-name" (click)="runReport(report)" style="cursor: pointer;" title="Run Report">{{ report.name }}</span>
                   <span class="industry-badge" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: #94a3b8; font-weight: 600;">Report</span>
                 </div>
               </td>
@@ -929,12 +1408,26 @@
               <td>{{ report.date_modified | date:'mediumDate' }}</td>
               <td *ngIf="showReportAssignedColumn">{{ report.assigned_user_name || 'Administrator' }}</td>
               <td style="text-align: center; position: relative;">
-                <button (click)="toggleRowMenu(report.id, 'report', $event)" class="row-actions-btn" title="Actions">
-                  <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
-                </button>
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                  <button (click)="runReport(report)" class="btn-run-pill" title="Run Report & View Results">
+                    <span class="material-icons-round" style="font-size: 14px;">play_arrow</span>
+                    <span>Run</span>
+                  </button>
+                  <button (click)="toggleRowMenu(report.id, 'report', $event)" class="row-actions-btn" title="Actions">
+                    <span class="material-icons-round" style="font-size: 18px;">arrow_drop_down</span>
+                  </button>
+                </div>
                 
                 <!-- Floating Context Menu -->
                 <div *ngIf="activeMenuRowId === report.id && activeMenuType === 'report'" class="row-context-menu glass-panel">
+                  <button (click)="runReport(report)" class="menu-item" style="color: #38bdf8;">
+                    <span class="material-icons-round" style="color: #38bdf8;">play_arrow</span>
+                    Run Report
+                  </button>
+                  <button (click)="exportReportCsv(report)" class="menu-item">
+                    <span class="material-icons-round">download</span>
+                    Export CSV
+                  </button>
                   <button (click)="viewReportDetails(report)" class="menu-item">
                     <span class="material-icons-round">info</span>
                     Details
@@ -1065,65 +1558,140 @@
       </div>
 
       <div class="settings-container" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; padding: 10px;">
-        <!-- Left Side: User Profile Form -->
-        <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);">
-          <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
-            <span class="material-icons-round" style="font-size: 18px;">person</span>
-            Personal Information
-          </h3>
+        <!-- Left Side: User Profile & Security -->
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          <!-- User Profile Form -->
+          <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-round" style="font-size: 18px;">person</span>
+              Personal Information
+            </h3>
 
-          <form (submit)="saveSettings(); $event.preventDefault();" style="display: flex; flex-direction: column; gap: 16px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <form (submit)="saveSettings(); $event.preventDefault();" style="display: flex; flex-direction: column; gap: 16px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">First Name</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="profileFirstName" 
+                    name="firstName"
+                    style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
+                    onfocus="this.style.borderColor='rgba(99, 102, 241, 0.4)'"
+                    onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+                  >
+                </div>
+
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Last Name</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="profileLastName" 
+                    name="lastName"
+                    style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
+                    onfocus="this.style.borderColor='rgba(99, 102, 241, 0.4)'"
+                    onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+                  >
+                </div>
+              </div>
+
               <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
-                <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">First Name</label>
+                <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Email Address</label>
                 <input 
-                  type="text" 
-                  [(ngModel)]="profileFirstName" 
-                  name="firstName"
+                  type="email" 
+                  [(ngModel)]="profileEmail" 
+                  name="email"
                   style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
                   onfocus="this.style.borderColor='rgba(99, 102, 241, 0.4)'"
                   onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
                 >
               </div>
 
-              <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
-                <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Last Name</label>
-                <input 
-                  type="text" 
-                  [(ngModel)]="profileLastName" 
-                  name="lastName"
-                  style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
-                  onfocus="this.style.borderColor='rgba(99, 102, 241, 0.4)'"
-                  onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
-                >
-              </div>
-            </div>
-
-            <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
-              <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Email Address</label>
-              <input 
-                type="email" 
-                [(ngModel)]="profileEmail" 
-                name="email"
-                style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
-                onfocus="this.style.borderColor='rgba(99, 102, 241, 0.4)'"
-                onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+              <button 
+                type="submit" 
+                class="btn btn-primary" 
+                [disabled]="isSavingSettings" 
+                style="margin-top: 10px; width: fit-content; padding: 10px 24px;"
               >
+                <span *ngIf="!isSavingSettings" style="display: flex; align-items: center; gap: 8px;">
+                  <span class="material-icons-round" style="font-size: 18px;">save</span>
+                  Save Profile
+                </span>
+                <span *ngIf="isSavingSettings">Saving...</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Security & Change Password Card -->
+          <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);">
+            <h3 style="margin-top: 0; margin-bottom: 20px; font-size: 16px; font-weight: 600; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-round" style="font-size: 18px;">lock_reset</span>
+              Security & Password
+            </h3>
+
+            <div *ngIf="passwordChangeMessage" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.25); color: #86efac; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;">
+              {{ passwordChangeMessage }}
             </div>
 
-            <button 
-              type="submit" 
-              class="btn btn-primary" 
-              [disabled]="isSavingSettings" 
-              style="margin-top: 10px; width: fit-content; padding: 10px 24px;"
-            >
-              <span *ngIf="!isSavingSettings" style="display: flex; align-items: center; gap: 8px;">
-                <span class="material-icons-round" style="font-size: 18px;">save</span>
-                Save Profile
-              </span>
-              <span *ngIf="isSavingSettings">Saving...</span>
-            </button>
-          </form>
+            <div *ngIf="passwordChangeError" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.25); color: #fca5a5; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;">
+              {{ passwordChangeError }}
+            </div>
+
+            <form (submit)="changePassword(); $event.preventDefault();" style="display: flex; flex-direction: column; gap: 16px;">
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Current Password</label>
+                <input 
+                  type="password" 
+                  [(ngModel)]="currentPasswordInput" 
+                  name="currentPassword"
+                  placeholder="Enter current password"
+                  style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
+                  onfocus="this.style.borderColor='rgba(245, 158, 11, 0.4)'"
+                  onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+                >
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">New Password</label>
+                  <input 
+                    type="password" 
+                    [(ngModel)]="newPasswordInput" 
+                    name="newPassword"
+                    placeholder="Min 6 chars"
+                    style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
+                    onfocus="this.style.borderColor='rgba(245, 158, 11, 0.4)'"
+                    onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+                  >
+                </div>
+
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+                  <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 600;">Confirm New Password</label>
+                  <input 
+                    type="password" 
+                    [(ngModel)]="confirmPasswordInput" 
+                    name="confirmPassword"
+                    placeholder="Re-enter new password"
+                    style="padding: 10px 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; color: #f8fafc; font-size: 14px; outline: none; transition: border 0.15s ease;"
+                    onfocus="this.style.borderColor='rgba(245, 158, 11, 0.4)'"
+                    onblur="this.style.borderColor='rgba(255, 255, 255, 0.08)'"
+                  >
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                class="btn btn-primary" 
+                [disabled]="isChangingPassword" 
+                style="margin-top: 10px; width: fit-content; padding: 10px 24px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none;"
+              >
+                <span *ngIf="!isChangingPassword" style="display: flex; align-items: center; gap: 8px;">
+                  <span class="material-icons-round" style="font-size: 18px;">vpn_key</span>
+                  Update Password
+                </span>
+                <span *ngIf="isChangingPassword">Updating...</span>
+              </button>
+            </form>
+          </div>
         </div>
 
         <!-- Right Side: Preferences (Light/Dark Mode Toggle) -->
@@ -1211,6 +1779,161 @@
             </div>
           </div>
         </div>
+
+        <!-- Database Backend Architecture Card (SpiceCRM vs SQLite Toggle) -->
+        <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 20px; grid-column: span 2;">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h3 style="margin-top: 0; margin-bottom: 6px; font-size: 16px; font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 8px;">
+                <span class="material-icons-round" style="font-size: 20px; color: #10b981;">storage</span>
+                Database Backend Architecture
+              </h3>
+              <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;">
+                Switch between the default remote SpiceCRM REST backend and the high-performance local SQLite database engine.
+              </p>
+            </div>
+
+            <!-- Sync Button -->
+            <button 
+              (click)="syncSpiceToSqlite()" 
+              [disabled]="isSyncingBackend"
+              class="btn btn-secondary"
+              style="display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 8px 16px; border-color: rgba(16, 185, 129, 0.3); color: #34d399;"
+              title="Copy current SpiceCRM records (accounts, meetings, users) into SQLite"
+            >
+              <span class="material-icons-round" [class.rotating-icon]="isSyncingBackend" style="font-size: 16px;">
+                {{ isSyncingBackend ? 'autorenew' : 'cloud_download' }}
+              </span>
+              <span>{{ isSyncingBackend ? 'Syncing Records...' : 'Sync From SpiceCRM' }}</span>
+            </button>
+          </div>
+
+          <!-- Sync Summary Banner if available -->
+          <div *ngIf="syncSummaryMessage" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #6ee7b7; padding: 10px 14px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+            <span class="material-icons-round" style="font-size: 18px; color: #10b981;">check_circle</span>
+            <span>{{ syncSummaryMessage }}</span>
+          </div>
+
+          <!-- Active Backend Switch Row -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 10px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;"
+                   [style.background]="isSqliteBackend ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'"
+                   [style.color]="isSqliteBackend ? '#34d399' : '#60a5fa'">
+                <span class="material-icons-round" style="font-size: 24px;">{{ isSqliteBackend ? 'bolt' : 'cloud' }}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 14px; font-weight: 600; color: #f8fafc;">
+                    {{ isSqliteBackend ? 'Redcliffe SQLite Engine' : 'SpiceCRM Remote Service' }}
+                  </span>
+                  <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 12px; letter-spacing: 0.05em;"
+                        [style.background]="isSqliteBackend ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'"
+                        [style.color]="isSqliteBackend ? '#34d399' : '#60a5fa'"
+                        [style.border]="isSqliteBackend ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'">
+                    {{ isSqliteBackend ? 'Active' : 'Active (Default)' }}
+                  </span>
+                </div>
+                <span style="font-size: 12px; color: #94a3b8;">
+                  {{ isSqliteBackend ? 'Embedded local database (zero remote dependency, instant queries, offline ready)' : 'External SpiceCRM instance via KREST API proxy' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Wired Toggle Switch for Backend -->
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span style="font-size: 12px; font-weight: 500; color: #64748b;">
+                {{ isSqliteBackend ? 'SQLite ON' : 'OFF (SpiceCRM)' }}
+              </span>
+              <label class="theme-toggle-switch" style="position: relative; display: inline-block; width: 48px; height: 26px; cursor: pointer;">
+                <input 
+                  type="checkbox" 
+                  [checked]="isSqliteBackend" 
+                  [disabled]="isSwitchingBackend"
+                  (change)="toggleBackendMode()" 
+                  style="opacity: 0; width: 0; height: 0;"
+                >
+                <span class="theme-toggle-slider" 
+                      [style.background-color]="isSqliteBackend ? '#10b981' : '#475569'" 
+                      style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; border-radius: 26px; transition: .4s; box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);">
+                  <span class="theme-toggle-knob" 
+                        [style.left]="isSqliteBackend ? '25px' : '3px'" 
+                        style="position: absolute; content: ''; height: 20px; width: 20px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; display: flex; align-items: center; justify-content: center;">
+                    <span class="material-icons-round" 
+                          [style.color]="isSqliteBackend ? '#10b981' : '#475569'" 
+                          style="font-size: 13px; font-weight: 700;">
+                      {{ isSqliteBackend ? 'bolt' : 'cloud' }}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <!-- SQLite Metrics / Stats Grid (when available) -->
+          <div *ngIf="sqliteStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
+            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Accounts</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.accounts }}</span>
+            </div>
+            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Individuals</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.individuals }}</span>
+            </div>
+            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Meetings</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.meetings }}</span>
+            </div>
+            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Users</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.users }}</span>
+            </div>
+            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Driver</span>
+              <span style="font-size: 13px; font-weight: 600; color: #34d399;">{{ sqliteStats.driver ? (sqliteStats.driver.includes('Native') ? 'Native (C++)' : 'System CLI') : 'SQLite 3' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accounts Table Column Preferences Card -->
+        <div class="settings-section-card glass-panel" style="padding: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); display: flex; flex-direction: column; gap: 16px; grid-column: span 2;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div>
+              <h3 style="margin-top: 0; margin-bottom: 6px; font-size: 16px; font-weight: 600; color: #f43f5e; display: flex; align-items: center; gap: 8px;">
+                <span class="material-icons-round" style="font-size: 18px; color: #f43f5e;">view_column</span>
+                Accounts Table Columns
+              </h3>
+              <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;">Choose which columns appear in your Accounts list view. Preferences save automatically across sessions.</p>
+            </div>
+            <button class="btn-reset-columns" (click)="resetColumnsToDefault(); saveColumnPreferences();" title="Reset all columns to defaults">
+              <span class="material-icons-round" style="font-size: 15px;">restart_alt</span>
+              <span>Reset to Defaults</span>
+            </button>
+          </div>
+
+          <div class="settings-column-grid">
+            <div 
+              *ngFor="let col of availableAccountColumns"
+              class="settings-column-card"
+              [class.active]="selectedAccountColumns[col.id]"
+              (click)="toggleSettingColumn(col.id)"
+            >
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span style="font-size: 13px; font-weight: 600; color: var(--color-text-primary);">{{ col.label }}</span>
+                  <span *ngIf="col.default" class="column-default-badge">Default</span>
+                </div>
+                <span style="font-size: 11px; color: var(--color-text-muted);">{{ col.description }}</span>
+              </div>
+              <input 
+                type="checkbox"
+                [checked]="selectedAccountColumns[col.id]"
+                (click)="$event.stopPropagation(); toggleSettingColumn(col.id)"
+                class="column-picker-checkbox"
+              >
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -1291,6 +2014,23 @@
         <h3>Redcliffe CRM Developer Console</h3>
       </div>
       <div class="dev-header-actions">
+        <!-- Live Perf Chip in Header -->
+        <div class="dev-header-perf-chip" title="Live Runtime Performance">
+          <span class="perf-dot" [style.background]="fpsColor"></span>
+          <span>⚡ {{ perfMetrics.fps }} FPS</span>
+          <span class="perf-divider">|</span>
+          <span [style.color]="pingColor">{{ perfMetrics.ping }}ms</span>
+          <ng-container *ngIf="perfMetrics.usedHeapMb">
+            <span class="perf-divider">|</span>
+            <span class="perf-heap-chip-val">{{ perfMetrics.usedHeapMb }}MB</span>
+          </ng-container>
+        </div>
+
+        <button class="dev-header-flush-btn" (click)="flushArraysAndHeap()" title="Flush open tabs, arrays & heap to new tab baseline">
+          <span class="material-icons-round btn-mini-icon">cleaning_services</span>
+          <span>Flush State</span>
+        </button>
+
         <span class="status-badge" [class.connected]="connectionStatus === 'connected'" [class.error]="connectionStatus === 'error'">
           {{ connectionStatus === 'connected' ? 'API Online' : 'API Offline' }}
         </span>
@@ -1321,7 +2061,7 @@
         </div>
       </div>
       
-      <!-- Right Column: Environment details & Quick actions -->
+      <!-- Right Column: Environment details & Performance health -->
       <div class="dev-console-col">
         <h4>CRM System Connection Info</h4>
         <div class="dev-meta-list dev-console-meta">
@@ -1334,6 +2074,48 @@
             <span class="meta-val code-text token-text" [title]="crmToken">{{ crmToken || 'No Active Session' }}</span>
           </div>
         </div>
+
+        <!-- Runtime Performance & Memory Health Card -->
+        <div class="dev-perf-card">
+          <div class="dev-perf-card-header">
+            <div class="dev-perf-title">
+              <span class="material-icons-round perf-card-icon">speed</span>
+              <span>Runtime Performance & Heap Health</span>
+            </div>
+            <span class="dev-perf-live-pill" [style.color]="fpsColor">
+              <span class="perf-dot" [style.background]="fpsColor"></span>
+              Live
+            </span>
+          </div>
+          <div class="dev-perf-grid">
+            <div class="dev-perf-metric-item">
+              <span class="perf-metric-lbl">Frame Rate</span>
+              <span class="perf-metric-val" [style.color]="fpsColor">{{ perfMetrics.fps }} FPS</span>
+            </div>
+            <div class="dev-perf-metric-item">
+              <span class="perf-metric-lbl">Main Thread Ping</span>
+              <span class="perf-metric-val" [style.color]="pingColor">{{ perfMetrics.ping }} ms</span>
+            </div>
+            <div class="dev-perf-metric-item">
+              <span class="perf-metric-lbl">JS Heap Memory</span>
+              <span class="perf-metric-val perf-heap-highlight">
+                {{ perfMetrics.usedHeapMb ? perfMetrics.usedHeapMb + ' MB' : '-- MB' }}
+              </span>
+            </div>
+            <div class="dev-perf-metric-item">
+              <span class="perf-metric-lbl">Active Tabs</span>
+              <span class="perf-metric-val">{{ openAccountTabs.length }} Tab(s)</span>
+            </div>
+          </div>
+          <button class="dev-perf-flush-btn" (click)="flushArraysAndHeap()" title="Purge cached state, tabs, and force GC to new-tab levels">
+            <span class="material-icons-round">cleaning_services</span>
+            <span>Flush Arrays & Heap (Restore Pristine Tab)</span>
+          </button>
+          <div *ngIf="lastPurgeMessage" class="dev-perf-purged-note">
+            ✓ {{ lastPurgeMessage }}
+          </div>
+        </div>
+
         <div class="dev-actions-grid">
           <button class="btn btn-secondary dev-action-btn" (click)="checkStatus()">
             <span class="material-icons-round btn-icon">sync</span>
@@ -1569,6 +2351,294 @@
 
     <div class="modal-footer" style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px; margin-top: 24px; display: flex; justify-content: flex-end;">
       <button class="btn btn-secondary" (click)="closeDetailsModal()" style="min-width: 90px;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Create New Individual -->
+<div class="modal-backdrop" *ngIf="showCreateIndividualModal" (click)="closeCreateIndividualModal()">
+  <div class="modal-card animate-fade-in" (click)="$event.stopPropagation()" style="max-width: 520px; padding: 24px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 12px; margin-bottom: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="material-icons-round" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 8px; border-radius: 50%; font-size: 20px;">person_add</span>
+        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">New Individual</h3>
+      </div>
+      <button (click)="closeCreateIndividualModal()" class="close-modal-btn" style="background: none; border: none; color: #94a3b8; cursor: pointer;">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 0;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Full Name *</label>
+          <input type="text" [(ngModel)]="newIndividualForm.name" placeholder="e.g. Jane Doe" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Role / Title</label>
+          <input type="text" [(ngModel)]="newIndividualForm.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
+          <select [(ngModel)]="newIndividualForm.status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Email</label>
+          <input type="email" [(ngModel)]="newIndividualForm.email" placeholder="jane@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Phone</label>
+          <input type="tel" [(ngModel)]="newIndividualForm.phone" placeholder="(604) 555-0199" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Associated Account / Organization</label>
+          <select [(ngModel)]="newIndividualForm.account_id" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
+            <option value="">-- None / Standalone Individual --</option>
+            <option *ngFor="let acc of recentAccounts" [value]="acc.id">{{ acc.name }}</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Notes</label>
+          <textarea [(ngModel)]="newIndividualForm.notes" placeholder="Additional details..." class="activity-textarea" style="width: 100%; min-height: 60px; box-sizing: border-box;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
+      <button class="btn btn-secondary" (click)="closeCreateIndividualModal()" style="padding: 8px 16px; font-size: 12px;">Cancel</button>
+      <button class="btn btn-primary" (click)="submitNewIndividual()" [disabled]="isCreatingIndividual" style="padding: 8px 20px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+        <span class="material-icons-round" style="font-size: 15px;" [class.spinning]="isCreatingIndividual">{{ isCreatingIndividual ? 'sync' : 'check' }}</span>
+        Create Individual
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Live Report Viewer Modal -->
+<div *ngIf="showReportViewerModal" class="report-viewer-overlay" (click)="closeReportViewerModal()">
+  <div class="report-viewer-dialog glass-panel" (click)="$event.stopPropagation()">
+    
+    <!-- Header -->
+    <div class="report-viewer-header">
+      <div class="report-title-group">
+        <div class="report-badge-row">
+          <span class="material-icons-round report-header-icon">analytics</span>
+          <span class="report-module-badge">{{ activeReportData?.report_module || activeReport?.report_module || 'Report' }}</span>
+          <span *ngIf="activeReportData" class="report-count-badge">{{ filteredReportRecords.length }} Records</span>
+        </div>
+        <h2 class="report-viewer-title">{{ activeReportData?.name || activeReport?.name || 'Report Viewer' }}</h2>
+      </div>
+
+      <div class="report-header-actions">
+        <!-- Quick Search -->
+        <div class="report-search-box">
+          <span class="material-icons-round search-icon">search</span>
+          <input 
+            type="text" 
+            [(ngModel)]="reportDataSearchQuery" 
+            placeholder="Search within results..."
+            class="report-search-input"
+          >
+          <button *ngIf="reportDataSearchQuery" (click)="reportDataSearchQuery = ''" class="clear-search-btn">
+            <span class="material-icons-round">close</span>
+          </button>
+        </div>
+
+        <!-- Export CSV Button -->
+        <button 
+          class="btn btn-secondary btn-export-report" 
+          (click)="exportReportCsv(activeReport)" 
+          [disabled]="isExportingCsv || isLoadingReportData"
+          title="Download Report as CSV"
+        >
+          <span class="material-icons-round" style="font-size: 16px;">{{ isExportingCsv ? 'sync' : 'download' }}</span>
+          <span>{{ isExportingCsv ? 'Exporting...' : 'Export CSV' }}</span>
+        </button>
+
+        <!-- Refresh Data Button -->
+        <button 
+          class="btn-icon-refresh" 
+          (click)="activeReport && runReport(activeReport)" 
+          [disabled]="isLoadingReportData"
+          title="Rerun Report"
+        >
+          <span class="material-icons-round" [class.spinning]="isLoadingReportData">refresh</span>
+        </button>
+
+        <!-- Close Modal Button -->
+        <button class="column-picker-close-btn" (click)="closeReportViewerModal()" title="Close Viewer">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: KPI Metrics & Visual Distribution Bar -->
+    <div *ngIf="!isLoadingReportData && activeReportData && filteredReportRecords.length > 0" class="report-summary-bar">
+      <!-- Metric Cards -->
+      <div class="report-kpi-cards">
+        <div class="report-kpi-card">
+          <span class="kpi-label">TOTAL ROWS</span>
+          <span class="kpi-value">{{ filteredReportRecords.length }}</span>
+        </div>
+        <div *ngFor="let stat of getReportNumericStats()" class="report-kpi-card">
+          <span class="kpi-label">{{ stat.label }} (SUM)</span>
+          <span class="kpi-value">{{ stat.sum.toLocaleString() }}</span>
+          <span class="kpi-sub">Avg: {{ stat.avg.toLocaleString() }}</span>
+        </div>
+      </div>
+
+      <!-- Distribution Visual Summary -->
+      <div *ngIf="getReportCategoryDistribution().length > 0" class="report-distribution-card">
+        <span class="dist-header">DISTRIBUTION BREAKDOWN</span>
+        <div class="dist-bars-container">
+          <div *ngFor="let cat of getReportCategoryDistribution()" class="dist-bar-item" [title]="cat.label + ': ' + cat.count + ' (' + cat.percent + '%)'">
+            <div class="dist-bar-label">
+              <span class="dist-cat-name">{{ cat.label }}</span>
+              <span class="dist-cat-pct">{{ cat.count }} ({{ cat.percent }}%)</span>
+            </div>
+            <div class="dist-bar-track">
+              <div class="dist-bar-fill" [style.width.%]="cat.percent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body: Results Table / Loading / Error -->
+    <div class="report-viewer-body">
+      <!-- Loading State -->
+      <div *ngIf="isLoadingReportData" class="report-loading-state">
+        <div class="spinner-large"></div>
+        <p class="loading-title">Executing Dynamic Query...</p>
+        <p class="loading-desc">Translating KReport filters and streaming tabular records from SpiceCRM</p>
+      </div>
+
+      <!-- Error State -->
+      <div *ngIf="!isLoadingReportData && reportDataError" class="report-error-state">
+        <span class="material-icons-round error-icon">error_outline</span>
+        <p class="error-title">Report Execution Failed</p>
+        <p class="error-desc">{{ reportDataError }}</p>
+        <button class="btn btn-secondary" (click)="activeReport && runReport(activeReport)">Try Again</button>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="!isLoadingReportData && !reportDataError && filteredReportRecords.length === 0" class="empty-state" style="padding: 40px 0;">
+        <span class="material-icons-round" style="font-size: 44px; color: #64748b;">search_off</span>
+        <h3>No Records Found</h3>
+        <p>No rows returned from this report definition or search query filter.</p>
+      </div>
+
+      <!-- Table View -->
+      <div *ngIf="!isLoadingReportData && !reportDataError && filteredReportRecords.length > 0" class="report-table-scroll">
+        <table class="report-results-table">
+          <thead>
+            <tr>
+              <th style="width: 44px; text-align: center;">#</th>
+              <th 
+                *ngFor="let col of activeReportData?.columns"
+                (click)="sortReportData(col.label)"
+                class="sortable-th"
+                [class.active-sort]="reportSortColumn === col.label"
+              >
+                <div class="th-content">
+                  <span>{{ col.label }}</span>
+                  <span class="material-icons-round sort-indicator" *ngIf="reportSortColumn === col.label">
+                    {{ reportSortAsc ? 'arrow_upward' : 'arrow_downward' }}
+                  </span>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              *ngFor="let row of filteredReportRecords; let i = index" 
+              class="report-data-row"
+              [class.clickable-row]="row['_module'] === 'Accounts' || row['ACCOUNT NAME']"
+              (click)="onReportRowClick(row)"
+              [title]="(row['_module'] === 'Accounts' || row['ACCOUNT NAME']) ? 'Click to open Account workspace' : ''"
+            >
+              <td class="row-num-cell">{{ i + 1 }}</td>
+              <td *ngFor="let col of activeReportData?.columns" class="report-cell">
+                <div class="cell-wrapper">
+                  <span [class.entity-link]="col.label.includes('NAME') || col.label.includes('ACCOUNT')">
+                    {{ row[col.label] || '—' }}
+                  </span>
+                  <span *ngIf="(col.label.includes('NAME') || col.label.includes('ACCOUNT')) && (row['_module'] === 'Accounts' || row['ACCOUNT NAME'])" class="material-icons-round drill-down-icon" style="font-size: 13px;">launch</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="report-viewer-footer">
+      <div class="report-footer-meta">
+        <span>Displaying {{ filteredReportRecords.length }} of {{ activeReportData?.total || 0 }} total rows</span>
+        <span *ngIf="reportDataSearchQuery" class="filtered-tag">(Filtered from search)</span>
+      </div>
+      <button class="btn btn-secondary" (click)="closeReportViewerModal()" style="min-width: 90px;">Close</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Column Picker Modal Dialog -->
+<div *ngIf="showColumnPickerModal" class="column-picker-overlay" (click)="closeColumnPickerModal()">
+  <div class="column-picker-dialog" (click)="$event.stopPropagation()">
+    <div class="column-picker-header">
+      <div class="column-picker-title-group">
+        <h3 class="column-picker-title">
+          <span class="material-icons-round">view_column</span>
+          <span>Customize Account Columns</span>
+        </h3>
+        <p class="column-picker-subtitle">Select which columns to display in the accounts table.</p>
+      </div>
+      <button class="column-picker-close-btn" (click)="closeColumnPickerModal()" title="Close">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="column-picker-list">
+      <div 
+        *ngFor="let col of availableAccountColumns" 
+        class="column-picker-item" 
+        [class.active-col]="tempAccountColumns[col.id]"
+        (click)="toggleTempColumn(col.id)"
+      >
+        <div class="column-item-info">
+          <div class="column-item-header">
+            <span class="column-item-title">{{ col.label }}</span>
+            <span *ngIf="col.default" class="column-default-badge">Default</span>
+          </div>
+          <span class="column-item-description">{{ col.description }}</span>
+        </div>
+        <input 
+          type="checkbox" 
+          [checked]="tempAccountColumns[col.id]" 
+          (click)="$event.stopPropagation(); toggleTempColumn(col.id)"
+          class="column-picker-checkbox"
+        >
+      </div>
+    </div>
+
+    <div class="column-picker-footer">
+      <button class="btn-reset-columns" (click)="resetColumnsToDefault()" title="Reset to default columns">
+        <span class="material-icons-round" style="font-size: 15px;">restart_alt</span>
+        <span>Reset to Defaults</span>
+      </button>
+
+      <div class="column-picker-footer-actions">
+        <button class="btn btn-secondary" (click)="closeColumnPickerModal()" style="padding: 7px 16px; font-size: 12px;">Cancel</button>
+        <button class="btn btn-primary" (click)="saveColumnPreferences()" style="padding: 7px 18px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+          <span class="material-icons-round" style="font-size: 15px;">save</span>
+          <span>Save Preferences</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>

@@ -28,6 +28,12 @@ This DigitalOcean droplet hosts the sandbox instance.
 * **App URL**: [https://control.redcliffe.ca/#/login](https://control.redcliffe.ca/#/login)
 * **Droplet (VM)**: Hosted on the client's DigitalOcean account (shares a droplet with Dev Staging).
 
+### Client Portal
+* **App URL**: [https://redcliffeapp.pfcd.ca](https://redcliffeapp.pfcd.ca)
+* **API Backend**: `rspice.pfcd.ca`
+* **Credentials**: Documented in [client_portal_credentials.md](file:///Users/richardcraven/Documents/Redcliffe/client_portal_credentials.md)
+
+
 ### Staging Environment
 * **App URL**: [https://spice.pfcd.ca/#/login](https://spice.pfcd.ca/#/login)
 * **Droplet (VM)**: Shares a droplet with Live Production on the client's DigitalOcean account.

@@ -18,10 +18,13 @@ export const sessionInterceptor: HttpInterceptorFn = (req, next) => {
 
 export interface CrmStatus {
   status: string;
+  backend?: 'spice' | 'sqlite';
+  label?: string;
   crmUrl?: string;
   authenticated: boolean;
   message?: string;
   token?: string;
+  stats?: any;
 }
 
 export interface ImportResults {
@@ -31,15 +34,49 @@ export interface ImportResults {
   errors: Array<{ name: string; error: string }>;
 }
 
+export interface IndividualBean {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  account_id?: string;
+  account_name?: string;
+  status?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GroupBenefitsData {
+  renewal_date?: string;
+  carrier_tpa?: string;
+  num_employees?: string | number;
+}
+
+export interface PlanAdminData {
+  names: string[];
+  emails: string[];
+  phones: string[];
+  individuals: IndividualBean[];
+}
+
 export interface AccountBean {
   id: string;
   name: string;
+  account_type?: string;
   email1?: string;
   website?: string;
   industry?: string;
   description?: string;
   shipping_address_city?: string;
   shipping_address_state?: string;
+  renewal_date?: string;
+  carrier_tpa?: string;
+  num_employees?: string | number;
+  group_benefits?: GroupBenefitsData;
+  plan_admin?: PlanAdminData;
+  [key: string]: any;
 }
 
 export interface MeetingBean {
@@ -79,6 +116,22 @@ export interface ReportBean {
   assigned_user_id?: string;
 }
 
+export interface ReportColumn {
+  fieldid: string;
+  label: string;
+  fieldname?: string;
+  sequence?: number;
+}
+
+export interface ReportExecutionResult {
+  id: string;
+  name: string;
+  report_module: string;
+  total: number;
+  columns: ReportColumn[];
+  records: Array<Record<string, string>>;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -109,6 +162,21 @@ export class CrmService {
 
   logout(): Observable<{ success: boolean }> {
     return this.http.post<{ success: boolean }>(`${this.apiUrl}/logout`, {}, this.getHeaders());
+  }
+
+  resetPassword(identifier: string, newPassword: string): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(`${this.apiUrl}/password/reset`, {
+      identifier,
+      newPassword
+    });
+  }
+
+  changePassword(username: string, currentPassword: string, newPassword: string): Observable<{ success: boolean; message: string }> {
+    return this.http.post<{ success: boolean; message: string }>(`${this.apiUrl}/password/change`, {
+      username,
+      currentPassword,
+      newPassword
+    }, this.getHeaders());
   }
 
   isLoggedIn(): boolean {
@@ -165,6 +233,20 @@ export class CrmService {
     return this.http.delete<any>(`${this.apiUrl}/reports/${id}`, this.getHeaders());
   }
 
+  getReportData(id: string): Observable<ReportExecutionResult> {
+    return this.http.get<ReportExecutionResult>(`${this.apiUrl}/reports/${id}/data`, this.getHeaders());
+  }
+
+  downloadReportCsv(id: string): Observable<Blob> {
+    const token = sessionStorage.getItem('auth_token');
+    return this.http.get(`${this.apiUrl}/reports/${id}/export/csv`, {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      },
+      responseType: 'blob'
+    });
+  }
+
   updateUserStatus(id: string, status: string): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/users/${id}/status`, { status }, this.getHeaders());
   }
@@ -204,4 +286,58 @@ export class CrmService {
   getOutlookEvent(id: string, userId: string): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/outlook/events/${id}?userId=${userId}`, this.getHeaders());
   }
+
+  updateAccountCustomFields(id: string, customData: Partial<GroupBenefitsData>): Observable<{ success: boolean; data: any }> {
+    return this.http.patch<{ success: boolean; data: any }>(`${this.apiUrl}/accounts/${id}/custom-fields`, customData, this.getHeaders());
+  }
+
+  getIndividuals(accountId?: string, search?: string): Observable<{ list: IndividualBean[] }> {
+    let params = '';
+    if (accountId && search) {
+      params = `?accountId=${encodeURIComponent(accountId)}&search=${encodeURIComponent(search)}`;
+    } else if (accountId) {
+      params = `?accountId=${encodeURIComponent(accountId)}`;
+    } else if (search) {
+      params = `?search=${encodeURIComponent(search)}`;
+    }
+    return this.http.get<{ list: IndividualBean[] }>(`${this.apiUrl}/individuals${params}`, this.getHeaders());
+  }
+
+  getIndividual(id: string): Observable<IndividualBean> {
+    return this.http.get<IndividualBean>(`${this.apiUrl}/individuals/${id}`, this.getHeaders());
+  }
+
+  createIndividual(individualData: Partial<IndividualBean>): Observable<IndividualBean> {
+    return this.http.post<IndividualBean>(`${this.apiUrl}/individuals`, individualData, this.getHeaders());
+  }
+
+  updateIndividual(id: string, individualData: Partial<IndividualBean>): Observable<IndividualBean> {
+    return this.http.patch<IndividualBean>(`${this.apiUrl}/individuals/${id}`, individualData, this.getHeaders());
+  }
+
+  deleteIndividual(id: string): Observable<{ success: boolean }> {
+    return this.http.delete<{ success: boolean }>(`${this.apiUrl}/individuals/${id}`, this.getHeaders());
+  }
+
+  getUserPreferences(): Observable<{ success: boolean; preferences: any }> {
+    return this.http.get<{ success: boolean; preferences: any }>(`${this.apiUrl}/user/preferences`, this.getHeaders());
+  }
+
+  saveUserPreferences(preferences: any): Observable<{ success: boolean; preferences: any }> {
+    return this.http.post<{ success: boolean; preferences: any }>(`${this.apiUrl}/user/preferences`, { preferences }, this.getHeaders());
+  }
+
+  getBackendConfig(): Observable<{ success: boolean; mode: 'spice' | 'sqlite'; available: string[]; stats: any }> {
+    return this.http.get<{ success: boolean; mode: 'spice' | 'sqlite'; available: string[]; stats: any }>(`${this.apiUrl}/backend/config`, this.getHeaders());
+  }
+
+  setBackendMode(mode: 'spice' | 'sqlite'): Observable<{ success: boolean; mode: string }> {
+    return this.http.post<{ success: boolean; mode: string }>(`${this.apiUrl}/backend/config`, { mode }, this.getHeaders());
+  }
+
+  syncSpiceToSqlite(): Observable<{ success: boolean; accounts: number; meetings: number; users: number; reports: number }> {
+    return this.http.post<{ success: boolean; accounts: number; meetings: number; users: number; reports: number }>(`${this.apiUrl}/backend/sync-spice`, {}, this.getHeaders());
+  }
 }
+
+

@@ -3,14 +3,19 @@
     <div class="logo-section">
       <img src="assets/redcliffe_logo.png" alt="Redcliffe Logo" class="login-logo">
       <h1>redcliffe.rct</h1>
-      <p>SpiceCRM client integration portal</p>
+      <p>{{ isResetMode ? 'Reset your portal password' : 'SpiceCRM client integration portal' }}</p>
     </div>
 
     <div *ngIf="errorMessage" class="error-message">
       {{ errorMessage }}
     </div>
 
-    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+    <div *ngIf="successMessage" class="success-message">
+      {{ successMessage }}
+    </div>
+
+    <!-- Sign In Form -->
+    <form *ngIf="!isResetMode" (ngSubmit)="onSubmit()" #loginForm="ngForm">
       <div class="form-group">
         <label for="username">SpiceCRM Username</label>
         <div class="input-wrapper">
@@ -29,7 +34,10 @@
       </div>
 
       <div class="form-group">
-        <label for="password">SpiceCRM Password</label>
+        <div class="label-row">
+          <label for="password">SpiceCRM Password</label>
+          <button type="button" class="link-btn" (click)="toggleResetMode(true)">Forgot password?</button>
+        </div>
         <div class="input-wrapper">
           <input
             type="password"
@@ -48,6 +56,69 @@
       <button type="submit" class="login-btn" [disabled]="isLoading">
         <div *ngIf="isLoading" class="spinner"></div>
         <span>{{ isLoading ? 'Authenticating...' : 'Sign In' }}</span>
+      </button>
+    </form>
+
+    <!-- Reset Password Form -->
+    <form *ngIf="isResetMode" (ngSubmit)="onResetSubmit()" #resetForm="ngForm">
+      <div class="form-group">
+        <label for="resetIdentifier">SpiceCRM Username or Email</label>
+        <div class="input-wrapper">
+          <input
+            type="text"
+            id="resetIdentifier"
+            name="resetIdentifier"
+            class="form-input"
+            [(ngModel)]="resetIdentifier"
+            placeholder="Enter your username or email"
+            required
+            autocomplete="username"
+            [disabled]="isResetting"
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="newPassword">New Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="newPassword"
+            name="newPassword"
+            class="form-input"
+            [(ngModel)]="newPassword"
+            placeholder="Minimum 6 characters"
+            required
+            autocomplete="new-password"
+            [disabled]="isResetting"
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="confirmPassword">Confirm New Password</label>
+        <div class="input-wrapper">
+          <input
+            type="password"
+            id="confirmPassword"
+            name="confirmPassword"
+            class="form-input"
+            [(ngModel)]="confirmPassword"
+            placeholder="Re-enter your new password"
+            required
+            autocomplete="new-password"
+            [disabled]="isResetting"
+          />
+        </div>
+      </div>
+
+      <button type="submit" class="login-btn" [disabled]="isResetting">
+        <div *ngIf="isResetting" class="spinner"></div>
+        <span>{{ isResetting ? 'Resetting Password...' : 'Reset Password' }}</span>
+      </button>
+
+      <button type="button" class="secondary-btn" (click)="toggleResetMode(false)" [disabled]="isResetting">
+        <span>Back to Sign In</span>
       </button>
     </form>
   </div>
