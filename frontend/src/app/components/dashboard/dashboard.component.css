@@ -132,6 +132,9 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: #111726 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 @media (max-width: 1024px) {
@@ -415,8 +418,9 @@
   overflow: auto;
   border-radius: var(--border-radius-sm);
   border: 1px solid var(--glass-border);
-  background: rgba(0, 0, 0, 0.15);
+  background: #0b0f19;
   scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .accounts-table {
@@ -426,7 +430,7 @@
 }
 
 .accounts-table th {
-  background: var(--bg-secondary);
+  background: #131b2e;
   padding: 16px 20px;
   font-size: 13px;
   font-weight: 600;
@@ -436,7 +440,9 @@
   letter-spacing: 0.05em;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 10;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .accounts-table td {
@@ -445,8 +451,9 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
+/* ⚡ RESTRICT TRANSITION TO BACKGROUND-COLOR (NO HOVER RE-LAYOUT ON SCROLL) ⚡ */
 .account-row {
-  transition: var(--transition-smooth);
+  transition: background-color 0.15s ease;
 }
 
 .account-row:hover {
@@ -478,10 +485,14 @@
   color: var(--color-text-primary);
 }
 
+.client-detail-link,
+.web-link {
+  transition: color 0.15s ease !important;
+}
+
 .client-detail-link {
   color: #38bdf8;
   text-decoration: none;
-  transition: var(--transition-smooth);
 }
 
 .client-detail-link:hover {
@@ -575,7 +586,6 @@ body.light-theme .associated-account-link:hover {
   align-items: center;
   gap: 4px;
   font-weight: 500;
-  transition: var(--transition-smooth);
 }
 
 .web-link:hover {

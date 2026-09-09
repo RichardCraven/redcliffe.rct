@@ -152,10 +152,11 @@ function initSchema() {
   `);
 
   // Default mode is 'spice' (off by default as requested)
-  const modeRow = queryOneSql("SELECT value FROM app_config WHERE key = 'database_backend'");
-  if (!modeRow) {
-    const now = new Date().toISOString();
-    executeSql(`INSERT INTO app_config (key, value, updated_at) VALUES ('database_backend', 'spice', ${escapeSql(now)})`);
+  currentBackendMode = 'spice';
+  try {
+    executeSql(`INSERT OR REPLACE INTO app_config (key, value) VALUES ('backend_mode', 'spice');`);
+  } catch (err) {
+    console.warn('[SQLite DB] Note during backend mode init:', err.message);
   }
 
   // Seed default admin users if users table is empty
@@ -258,25 +259,23 @@ function seedFromLocalJson() {
 
 // ==================== CONFIG & MODE ====================
 
+let currentBackendMode = 'spice';
+
 function getBackendMode() {
-  try {
-    const row = queryOneSql("SELECT value FROM app_config WHERE key = 'database_backend'");
-    return row && row.value ? row.value : 'spice';
-  } catch (err) {
-    return 'spice';
-  }
+  return currentBackendMode;
 }
 
 function setBackendMode(mode) {
   const cleanMode = mode === 'sqlite' ? 'sqlite' : 'spice';
-  const now = new Date().toISOString();
-  executeSql(`
-    INSERT INTO app_config (key, value, updated_at)
-    VALUES ('database_backend', ${escapeSql(cleanMode)}, ${escapeSql(now)})
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;
-  `);
-  console.log(`[SQLite DB] Active database backend switched to: "${cleanMode.toUpperCase()}"`);
-  return cleanMode;
+  currentBackendMode = cleanMode;
+
+  try {
+    executeSql(`INSERT OR REPLACE INTO app_config (key, value) VALUES ('backend_mode', '${cleanMode}');`);
+  } catch (err) {
+    console.warn(`[SQLITE WARNING] Could not persist backend mode to disk: ${err.message}. Running with in-memory mode: ${cleanMode}`);
+  }
+
+  return currentBackendMode;
 }
 
 // ==================== AUTHENTICATION & USERS ====================

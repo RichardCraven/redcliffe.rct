@@ -105,30 +105,8 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const currentMode = sqliteDb.getBackendMode();
-  if (currentMode === 'sqlite') {
-    const user = sqliteDb.authenticateUser(username, password);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-    const token = crypto.randomBytes(32).toString('hex');
-    activeUserSessions.set(token, {
-      username: user.user_name,
-      name: (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name
-    });
-    return res.json({ 
-      success: true, 
-      token, 
-      backend: 'sqlite',
-      user: {
-        username: user.user_name,
-        name: (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name
-      } 
-    });
-  }
-
+  // 1. First attempt: Authenticate against SpiceCRM
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
-
   try {
     const response = await fetch(`${spiceCrmUrl}/authentication/login`, {
       method: 'GET',
@@ -138,31 +116,56 @@ app.post('/api/login', async (req, res) => {
       }
     });
 
-    if (!response.ok) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    const data = await response.json();
-    
-    // Generate a secure session token
-    const token = crypto.randomBytes(32).toString('hex');
-    activeUserSessions.set(token, {
-      username,
-      name: data.user_name || data.display_name || username
-    });
-
-    res.json({ 
-      success: true, 
-      token, 
-      user: {
+    if (response.ok) {
+      const data = await response.json();
+      const token = crypto.randomBytes(32).toString('hex');
+      const displayName = data.user_name || data.display_name || username;
+      activeUserSessions.set(token, {
         username,
-        name: data.user_name || data.display_name || username
-      } 
-    });
-  } catch (error) {
-    console.error('Login error:', error.message);
-    res.status(500).json({ error: 'Server error during login authentication' });
+        name: displayName
+      });
+
+      console.log(`[BACKEND] ✓ Authenticated user "${username}" via SpiceCRM.`);
+      return res.json({ 
+        success: true, 
+        token, 
+        user: {
+          username,
+          name: displayName
+        } 
+      });
+    }
+  } catch (spiceErr) {
+    console.warn('[BACKEND] SpiceCRM login attempt error:', spiceErr.message);
   }
+
+  // 2. Second attempt / Fallback: Check local SQLite users
+  try {
+    const user = sqliteDb.authenticateUser(username, password);
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const displayName = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name;
+      activeUserSessions.set(token, {
+        username: user.user_name,
+        name: displayName
+      });
+
+      console.log(`[BACKEND] ✓ Authenticated user "${username}" via local SQLite.`);
+      return res.json({ 
+        success: true, 
+        token, 
+        backend: 'sqlite',
+        user: {
+          username: user.user_name,
+          name: displayName
+        } 
+      });
+    }
+  } catch (sqlErr) {
+    console.warn('[BACKEND] SQLite login attempt error:', sqlErr.message);
+  }
+
+  return res.status(401).json({ error: 'Invalid username or password' });
 });
 
 // Endpoint to log out
