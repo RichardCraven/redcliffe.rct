@@ -981,6 +981,12 @@ body.light-theme .associated-account-link:hover {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .btn-icon {
   padding: 8px;
   border-radius: 50%;
