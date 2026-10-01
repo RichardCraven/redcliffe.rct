@@ -1,9 +1,9 @@
 <div class="login-container">
   <div class="login-card">
     <div class="logo-section">
-      <img src="assets/redcliffe_logo.png" alt="Redcliffe Logo" class="login-logo">
-      <h1>redcliffe.rct</h1>
-      <p>{{ isResetMode ? 'Reset your portal password' : 'SpiceCRM client integration portal' }}</p>
+      <img src="assets/redcliffe_logo.png" [alt]="username.trim().toLowerCase() === 'test' ? 'Demo Financial Logo' : 'Portal Logo'" class="login-logo">
+      <h1>{{ username.trim().toLowerCase() === 'test' ? 'demo.llc' : 'redcliffe.rct' }}</h1>
+      <p>{{ isResetMode ? 'Reset your portal password' : (username.trim().toLowerCase() === 'test' ? 'Demo Financial LLC Client/Advisor Portal' : 'Client/Advisor Portal') }}</p>
     </div>
 
     <div *ngIf="errorMessage" class="error-message">
@@ -17,7 +17,7 @@
     <!-- Sign In Form -->
     <form *ngIf="!isResetMode" (ngSubmit)="onSubmit()" #loginForm="ngForm">
       <div class="form-group">
-        <label for="username">SpiceCRM Username</label>
+        <label for="username">Username</label>
         <div class="input-wrapper">
           <input
             type="text"
@@ -34,10 +34,7 @@
       </div>
 
       <div class="form-group">
-        <div class="label-row">
-          <label for="password">SpiceCRM Password</label>
-          <button type="button" class="link-btn" (click)="toggleResetMode(true)">Forgot password?</button>
-        </div>
+        <label for="password">Password</label>
         <div class="input-wrapper">
           <input
             type="password"
@@ -51,18 +48,26 @@
             [disabled]="isLoading"
           />
         </div>
+        <div class="forgot-password-row">
+          <button type="button" class="link-btn" (click)="toggleResetMode(true)">Forgot password?</button>
+        </div>
       </div>
 
       <button type="submit" class="login-btn" [disabled]="isLoading">
         <div *ngIf="isLoading" class="spinner"></div>
         <span>{{ isLoading ? 'Authenticating...' : 'Sign In' }}</span>
       </button>
+
+      <div class="demo-badge-hint" style="margin-top: 16px; padding: 9px 12px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.22); border-radius: 8px; font-size: 12px; color: #94a3b8; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px;">
+        <span class="material-icons-round" style="font-size: 16px; color: #60a5fa;">shield</span>
+        <span>Demo showcase: sign in with <strong>test</strong> / <strong>test</strong></span>
+      </div>
     </form>
 
     <!-- Reset Password Form -->
     <form *ngIf="isResetMode" (ngSubmit)="onResetSubmit()" #resetForm="ngForm">
       <div class="form-group">
-        <label for="resetIdentifier">SpiceCRM Username or Email</label>
+        <label for="resetIdentifier">Username or Email</label>
         <div class="input-wrapper">
           <input
             type="text"

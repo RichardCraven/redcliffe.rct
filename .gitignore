@@ -9,3 +9,5 @@ output*.txt
 test_write.py
 run_shell.js
 inspect_restack.sh
+*.sqlite-shm
+*.sqlite-wal
