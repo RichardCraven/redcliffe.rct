@@ -1,8 +1,66 @@
-import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
-import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ReportColumn, ReportExecutionResult, ImportResults, IndividualBean, GroupBenefitsData, PlanAdminData } from '../../services/crm.service';
+import { CrmService, AccountBean, MeetingBean, UserBean, ReportBean, ReportColumn, ReportExecutionResult, ImportResults, ContactBean, IndividualBean, GroupBenefitsData, PlanAdminData, Carrier, CensusImportResult, CarrierCensusFormatSpec, CensusEmployee } from '../../services/crm.service';
+
+export interface NavButtonItem {
+  id: string;
+  label: string;
+  icon: string;
+  appName: string;
+}
+
+export interface ParsedCensusBenefit {
+  code: string;
+  name: string;
+  icon: string;
+  category: 'life' | 'health' | 'dental' | 'disability' | 'wellness' | 'general';
+  coverageType?: string;
+  coverageAmount?: string;
+  periodSuffix?: string;
+}
+
+export interface ParsedCensusDependent {
+  name: string;
+  relationship: string;
+}
+
+export interface ParsedCensusData {
+  isCensus: boolean;
+  carrier: string;
+  carrierClass: string;
+  certNumber: string;
+  policyNumber: string;
+  division: string;
+  classGroup: string;
+  salary: string;
+  hireDate: string;
+  birthDate: string;
+  address: string;
+  benefits: ParsedCensusBenefit[];
+  dependents: ParsedCensusDependent[];
+  dependentsCount: number;
+  userNotes: string;
+  rawCensusLine: string;
+}
+
+const CENSUS_BENEFIT_MAP: Record<string, { name: string; icon: string; category: 'life' | 'health' | 'dental' | 'disability' | 'wellness' | 'general' }> = {
+  'BLIFE': { name: 'Basic Life Insurance', icon: 'favorite', category: 'life' },
+  'DEP_LIFE': { name: 'Dependent Life Insurance', icon: 'diversity_1', category: 'life' },
+  'AD&D': { name: 'Accidental Death & Dismemberment', icon: 'security', category: 'life' },
+  'HCARE': { name: 'Extended Healthcare', icon: 'medical_services', category: 'health' },
+  'DENT': { name: 'Dental Care', icon: 'dentistry', category: 'dental' },
+  'STD': { name: 'Short-Term Disability', icon: 'healing', category: 'disability' },
+  'LTD': { name: 'Long-Term Disability', icon: 'health_and_safety', category: 'disability' },
+  'HSA': { name: 'Health Spending Account', icon: 'account_balance_wallet', category: 'health' },
+  'EFAP': { name: 'Employee & Family Assistance', icon: 'support_agent', category: 'wellness' },
+  'VIRTUAL_HEALTH': { name: 'Virtual Healthcare', icon: 'videocam', category: 'wellness' },
+  'CI': { name: 'Critical Illness Insurance', icon: 'monitor_heart', category: 'health' },
+  'VISION': { name: 'Vision Care', icon: 'visibility', category: 'health' },
+  'TRAVEL': { name: 'Emergency Travel Medical', icon: 'flight_takeoff', category: 'health' },
+  'WFA': { name: 'Wellness Spending Account', icon: 'spa', category: 'wellness' }
+};
 
 @Component({
   selector: 'app-dashboard',
@@ -16,6 +74,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
   crmUrl: string = '';
   errorMessage: string = '';
   crmToken: string = '';
+
+  // Configurable nav buttons with drag-and-drop reordering
+  readonly defaultNavButtons: NavButtonItem[] = [
+    { id: 'accounts', label: 'Accounts', icon: 'corporate_fare', appName: 'Accounts' },
+    { id: 'meetings', label: 'Meetings', icon: 'today', appName: 'Meetings' },
+    { id: 'contacts', label: 'Contacts', icon: 'contacts', appName: 'Contacts' },
+    { id: 'users', label: 'Users', icon: 'manage_accounts', appName: 'Users' },
+    { id: 'reports', label: 'Reports', icon: 'analytics', appName: 'Reports' },
+    { id: 'carriers', label: 'Carriers', icon: 'health_and_safety', appName: 'Carriers' },
+    { id: 'search', label: 'Global Search', icon: 'search', appName: 'Search' }
+  ];
+
+  navButtons: NavButtonItem[] = [...this.defaultNavButtons];
+
+  // Global Search State
+  isGlobalSearchOpen: boolean = false;
+  globalSearchQuery: string = '';
+  globalSearchResults: any = null;
+  isGlobalSearching: boolean = false;
+  private globalSearchDebounceTimer: any = null;
+  @ViewChild('globalSearchInput') globalSearchInputRef?: ElementRef<HTMLInputElement>;
+  isNavDragging = false;
+  draggedNavIndex = -1;
+  draggedNavId: string | null = null;
+  pendingDragIndex = -1;
+  preventNavClick = false;
+
+  private navPointerStartX = 0;
+  private navPointerStartY = 0;
+  private navPointerCurrentPos = { x: 0, y: 0 };
+  private baseOffsetX = 0;
+  private navHoldTimer: any = null;
+  private originalNavOrderBeforeDrag: NavButtonItem[] = [];
+
+  private onWindowPointerMoveBound = (e: PointerEvent) => this.onWindowPointerMove(e);
+  private onWindowPointerUpBound = (e: PointerEvent) => this.onWindowPointerUp(e);
   
   selectedFile: File | null = null;
   dragOver = false;
@@ -36,6 +130,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   usersList: UserBean[] = [];
   isLoadingUsers = false;
+  isSyncingUsers = false;
   usersSearchQuery = '';
 
   reportsList: ReportBean[] = [];
@@ -46,6 +141,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   showReportViewerModal = false;
   activeReport: ReportBean | null = null;
   activeReportData: ReportExecutionResult | null = null;
+  selectedReportExecution: ReportExecutionResult | null = null;
   isLoadingReportData = false;
   reportDataError: string | null = null;
   reportDataSearchQuery = '';
@@ -53,15 +149,30 @@ export class DashboardComponent implements OnInit, OnDestroy {
   reportSortAsc = true;
   isExportingCsv = false;
 
-  activeView: 'accounts' | 'meetings' | 'users' | 'reports' | 'settings' | 'individuals' = 'accounts';
+  activeView: 'accounts' | 'meetings' | 'users' | 'reports' | 'settings' | 'contacts' | 'individuals' | 'carriers' = 'accounts';
 
-  // Individuals State
-  individualsList: IndividualBean[] = [];
-  isLoadingIndividuals = false;
-  individualsSearchQuery = '';
-  showCreateIndividualModal = false;
-  isCreatingIndividual = false;
-  newIndividualForm = {
+  // Carriers State
+  carriersList: Carrier[] = [];
+  isLoadingCarriers = false;
+  carriersSearchQuery = '';
+  showCreateCarrierModal = false;
+  isCreatingCarrier = false;
+  isEditingCarrier = false;
+  selectedCarrierId: string | null = null;
+  carrierModalForm = {
+    carrier: '',
+    description: '',
+    clientIdentifier: '',
+    clients: ''
+  };
+
+  // Contacts State
+  contactsList: ContactBean[] = [];
+  isLoadingContacts = false;
+  contactsSearchQuery = '';
+  showCreateContactModal = false;
+  isCreatingContact = false;
+  newContactForm = {
     name: '',
     email: '',
     phone: '',
@@ -71,6 +182,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
     notes: '',
     status: 'Active'
   };
+  selectedContactsFilter: 'all' | 'members' | 'admins' | string = 'all';
+
+  // Backward compatibility getters/setters for individuals
+  get individualsList(): ContactBean[] { return this.contactsList; }
+  set individualsList(val: ContactBean[]) { this.contactsList = val; }
+  get isLoadingIndividuals(): boolean { return this.isLoadingContacts; }
+  set isLoadingIndividuals(val: boolean) { this.isLoadingContacts = val; }
+  get individualsSearchQuery(): string { return this.contactsSearchQuery; }
+  set individualsSearchQuery(val: string) { this.contactsSearchQuery = val; }
+  get showCreateIndividualModal(): boolean { return this.showCreateContactModal; }
+  set showCreateIndividualModal(val: boolean) { this.showCreateContactModal = val; }
+  get isCreatingIndividual(): boolean { return this.isCreatingContact; }
+  set isCreatingIndividual(val: boolean) { this.isCreatingContact = val; }
+  get newIndividualForm() { return this.newContactForm; }
+  set newIndividualForm(val: any) { this.newContactForm = val; }
+  get selectedIndividualsFilter(): string { return this.selectedContactsFilter; }
+  set selectedIndividualsFilter(val: string) { this.selectedContactsFilter = val; }
 
   // Profile and Settings State
   currentUserProfile: UserBean | null = null;
@@ -79,10 +207,73 @@ export class DashboardComponent implements OnInit, OnDestroy {
   profileLastName = '';
   isSavingSettings = false;
   isDarkMode = true;
+  isSquareCorners = false;
   isOutlookConnected = false;
   showAssignedColumn = false;
   showReportAssignedColumn = false;
   isImportPanelCollapsed = true;
+
+  get isDemoUser(): boolean {
+    const u = (sessionStorage.getItem('username') || '').toLowerCase();
+    const demo = sessionStorage.getItem('is_demo') === 'true';
+    return u === 'test' || demo;
+  }
+
+  // Census Data Import State (for Contacts and Carriers pages)
+  isContactsImportCollapsed = false;
+  get isIndividualsImportCollapsed(): boolean { return this.isContactsImportCollapsed; }
+  set isIndividualsImportCollapsed(val: boolean) { this.isContactsImportCollapsed = val; }
+  isCarriersImportCollapsed = false;
+  selectedCensusCarrier: string = 'ManuLife';
+  contactsCensusFiles: File[] = [];
+  get individualsCensusFiles(): File[] { return this.contactsCensusFiles; }
+  set individualsCensusFiles(val: File[]) { this.contactsCensusFiles = val; }
+  carriersCensusFiles: File[] = [];
+  contactsDragOver = false;
+  get individualsDragOver(): boolean { return this.contactsDragOver; }
+  set individualsDragOver(val: boolean) { this.contactsDragOver = val; }
+  carriersDragOver = false;
+  isUploadingCensus = false;
+  censusUploadProgress = 0;
+  censusImportResults: CensusImportResult | null = null;
+  censusErrorMessage: string = '';
+  showCensusRosterModal = false;
+  censusRosterCarrier: string = '';
+  censusRosterRecords: any[] = [];
+  censusRosterSearchQuery: string = '';
+  isLoadingCensusRoster = false;
+
+  availableCarrierFormats: CarrierCensusFormatSpec[] = [
+    {
+      carrierId: 'CanadaLife',
+      carrierName: 'Canada Life',
+      expectedFiles: ['ENROLLEMP.TXT', 'ENROLLBFT.TXT', 'ENROLLBNC.TXT'],
+      description: 'Canada Life enrollment files: 40-col employee master, 20-col benefits, 14-col dependents',
+      fileFormat: 'Comma-delimited TXT'
+    },
+    {
+      carrierId: 'ManuLife',
+      carrierName: 'ManuLife Financial',
+      expectedFiles: ['*.xlsx', '*.xls'],
+      description: 'ManuLife 65-column Excel billing census: demographics, premiums, and 7 benefit breakdowns',
+      fileFormat: 'Excel Spreadsheet (.xlsx)'
+    },
+    {
+      carrierId: 'GroupSource',
+      carrierName: 'GroupSource TPA',
+      expectedFiles: ['BillingPremium*.csv'],
+      description: '56-col consolidated billing census: 10 coverages with EE/ER premium splits',
+      fileFormat: 'CSV'
+    },
+    {
+      carrierId: 'Generic',
+      carrierName: 'Generic Census',
+      expectedFiles: ['*.csv', '*.txt', '*.xlsx'],
+      description: 'Standard employee census roster',
+      fileFormat: 'CSV or Delimited TXT'
+    }
+  ];
+
 
   // Database Backend State (SpiceCRM vs SQLite)
   backendMode: 'spice' | 'sqlite' = 'spice';
@@ -151,7 +342,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Available Apps list
   appsList = [
     { name: 'Accounts', desc: 'Manage customer portfolios and details.', icon: 'corporate_fare', type: 'accounts' },
-    { name: 'Individuals', desc: 'Directory of individual plan administrators and contacts.', icon: 'badge', type: 'individuals' },
+    { name: 'Carriers', desc: 'Manage associated benefit carriers, identifiers, and client schools.', icon: 'health_and_safety', type: 'carriers' },
+    { name: 'Contacts', desc: 'Directory of plan administrators, members, and organizational contacts.', icon: 'contacts', type: 'contacts' },
     { name: 'Meetings', desc: 'View scheduled company meetings.', icon: 'today', type: 'meetings' },
     { name: 'Imports', desc: 'CSV database population terminal.', icon: 'cloud_upload', type: 'imports' },
     { name: 'Reports', desc: 'Analytical summaries and metrics.', icon: 'analytics', type: 'reports' },
@@ -234,6 +426,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.stopPerfMonitoring();
+    this.cleanupNavPointerListeners();
   }
 
   startPerfMonitoring() {
@@ -389,12 +582,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.updateTabRoute(null);
       this.activeAccountTabId = null;
 
-      if (appName === 'Meetings') {
+      if (appName === 'Carriers') {
+        this.activeView = 'carriers';
+        this.loadCarriers();
+      } else if (appName === 'Meetings') {
         this.activeView = 'meetings';
         this.loadRecentMeetings();
-      } else if (appName === 'Individuals') {
-        this.activeView = 'individuals';
-        this.loadIndividuals();
+      } else if (appName === 'Contacts' || appName === 'Individuals') {
+        this.activeView = 'contacts';
+        this.loadContacts();
       } else if (appName === 'Users') {
         this.activeView = 'users';
         this.loadRecentUsers();
@@ -541,7 +737,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         });
         if (this.sqliteStats) {
           this.consoleHistory.push({
-            text: `SQLite Stats: ${this.sqliteStats.accounts} accounts, ${this.sqliteStats.individuals} individuals, ${this.sqliteStats.meetings} meetings, ${this.sqliteStats.users} users`,
+            text: `SQLite Stats: ${this.sqliteStats.accounts} accounts, ${this.sqliteStats.contacts || this.sqliteStats.individuals || 0} contacts, ${this.sqliteStats.carriers || 0} carriers, ${this.sqliteStats.meetings} meetings, ${this.sqliteStats.users} users, ${this.sqliteStats.reports || 0} reports, ${this.sqliteStats.censusRecords || 0} census records`,
             type: 'output'
           });
         }
@@ -572,17 +768,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
   constructor(
     private crmService: CrmService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
     this.isDarkMode = localStorage.getItem('theme') !== 'light';
     this.applyTheme();
+    document.title = this.isDemoUser ? 'Demo Financial LLC CRM' : 'Redcliffe CRM Data Portal';
+    const savedCornerStyle = localStorage.getItem('redcliffe_corner_style') || localStorage.getItem('feel');
+    this.isSquareCorners = savedCornerStyle === 'square';
+    this.applyCornerStyle();
+
+    // 0. Load nav order from localStorage for immediate visual layout
+    const savedNavOrder = localStorage.getItem('redcliffe_nav_order');
+    if (savedNavOrder) {
+      try {
+        const parsed = JSON.parse(savedNavOrder);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.applyNavOrder(parsed);
+        }
+      } catch (_) {}
+    }
+
     this.checkStatus();
     this.loadBackendConfig();
     this.loadRecentAccounts();
     this.loadUserProfile();
     this.loadIndividuals();
+    this.loadCarriers();
     this.loadColumnPreferences();
 
     // Listen for session invalidation/timeouts
@@ -594,15 +808,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.route.queryParams.subscribe(params => {
       const activeTabId = params['tab'];
       if (activeTabId) {
+        if (this.activeAccountTabId === activeTabId) {
+          return;
+        }
         if (activeTabId.startsWith('account_')) {
           const accountId = activeTabId.replace('account_', '');
           this.openAccountTabById(accountId);
         } else if (activeTabId.startsWith('meeting_')) {
           const meetingId = activeTabId.replace('meeting_', '');
           this.openMeetingTabById(meetingId);
-        } else if (activeTabId.startsWith('individual_')) {
-          const individualId = activeTabId.replace('individual_', '');
-          this.openIndividualTabById(individualId);
+        } else if (activeTabId.startsWith('contact_') || activeTabId.startsWith('individual_')) {
+          const contactId = activeTabId.replace('contact_', '').replace('individual_', '');
+          this.openContactTabById(contactId);
         } else {
           this.activeAccountTabId = null;
         }
@@ -616,10 +833,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.crmService.logout().subscribe({
       next: () => {
         sessionStorage.clear();
+        document.title = 'Redcliffe CRM Data Portal';
         this.router.navigate(['/login']);
       },
       error: () => {
         sessionStorage.clear();
+        document.title = 'Redcliffe CRM Data Portal';
         this.router.navigate(['/login']);
       }
     });
@@ -692,11 +911,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.crmService.syncSpiceToSqlite().subscribe({
       next: (res) => {
         this.isSyncingBackend = false;
-        this.syncSummaryMessage = `Successfully synced ${res.accounts} accounts, ${res.meetings} meetings, ${res.users} users, and ${res.reports} reports from SpiceCRM into SQLite.`;
+        const contactsCount = res.contacts || res.individuals || 0;
+        this.syncSummaryMessage = `Successfully synced ${res.accounts} accounts, ${contactsCount} contacts, ${res.meetings} meetings, ${res.users} users, ${res.reports} reports, and synchronized ${res.carriers || 0} carriers (${res.censusRecords || 0} census records preserved).`;
         this.loadBackendConfig();
         if (this.isSqliteBackend) {
           this.loadRecentAccounts();
-          this.loadIndividuals();
+          this.loadContacts();
+          this.loadCarriers();
+          this.loadRecentMeetings();
+          this.loadRecentUsers();
+          this.loadRecentReports();
         }
       },
       error: (err) => {
@@ -819,6 +1043,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   buildAccountTab(tabId: string, acc: any): any {
+    if (acc && acc.description) {
+      acc.description = this.getAccountDescription(acc.description);
+    }
     return {
       id: tabId,
       name: acc.name,
@@ -868,7 +1095,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       if (match) targetId = match.id;
     }
     if (!targetId) {
-      alert(`No account record linked for "${accountName || 'this individual'}".`);
+      alert(`No account record linked for "${accountName || 'this contact'}".`);
       return;
     }
 
@@ -949,7 +1176,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
 
     tab.isSavingAdmin = true;
-    const indData: Partial<IndividualBean> = {
+    const contactData: Partial<ContactBean> = {
       name: tab.newAdminForm.name.trim(),
       email: tab.newAdminForm.email?.trim() || '',
       phone: tab.newAdminForm.phone?.trim() || '',
@@ -959,18 +1186,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
       status: 'Active'
     };
 
-    this.crmService.createIndividual(indData).subscribe({
+    this.crmService.createContact(contactData).subscribe({
       next: (created) => {
         tab.isSavingAdmin = false;
         tab.showAddAdminModal = false;
         tab.newAdminForm = { name: '', email: '', phone: '', role: 'Plan Administrator' };
 
         if (!tab.account.plan_admin) {
-          tab.account.plan_admin = { names: [], emails: [], phones: [], individuals: [] };
+          tab.account.plan_admin = { names: [], emails: [], phones: [], contacts: [], individuals: [] };
+        }
+        if (!Array.isArray(tab.account.plan_admin.contacts)) {
+          tab.account.plan_admin.contacts = [];
         }
         if (!Array.isArray(tab.account.plan_admin.individuals)) {
           tab.account.plan_admin.individuals = [];
         }
+        tab.account.plan_admin.contacts.push(created);
         tab.account.plan_admin.individuals.push(created);
         if (created.name && !tab.account.plan_admin.names.includes(created.name)) {
           tab.account.plan_admin.names.push(created.name);
@@ -988,11 +1219,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
           inList.plan_admin = tab.account.plan_admin;
         }
 
-        this.loadIndividuals();
+        this.loadContacts();
         this.triggerSuccessModal(
           'Administrator Added',
-          `${created.name} has been added as a Plan Administrator and registered in the individuals table.`,
-          `individual_${created.id}`,
+          `${created.name} has been added as a Plan Administrator and registered in the contacts database.`,
+          `contact_${created.id}`,
           'success'
         );
       },
@@ -1003,44 +1234,218 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  loadIndividuals() {
-    this.isLoadingIndividuals = true;
-    this.crmService.getIndividuals().subscribe({
+  loadContacts() {
+    this.isLoadingContacts = true;
+    this.crmService.getContacts().subscribe({
       next: (res) => {
-        this.individualsList = res.list || [];
-        this.isLoadingIndividuals = false;
+        this.contactsList = res.list || [];
+        this.isLoadingContacts = false;
       },
       error: (err) => {
-        console.error('Failed to load individuals:', err);
-        this.isLoadingIndividuals = false;
+        console.error('Failed to load contacts:', err);
+        this.isLoadingContacts = false;
       }
     });
   }
 
-  get filteredIndividuals(): IndividualBean[] {
-    if (!this.individualsSearchQuery) {
-      return this.individualsList;
+  loadIndividuals() {
+    this.loadContacts();
+  }
+
+  get planMembersCount(): number {
+    return this.contactsList.filter(i => (i.role || '').toLowerCase() === 'plan member').length;
+  }
+
+  get planAdminsCount(): number {
+    return this.contactsList.filter(i => (i.role || '').toLowerCase() !== 'plan member').length;
+  }
+
+  setContactsFilter(filter: string) {
+    this.selectedContactsFilter = filter;
+    this.contactsSearchQuery = '';
+  }
+
+  setIndividualsFilter(filter: string) {
+    this.setContactsFilter(filter);
+  }
+
+  get filteredContacts(): ContactBean[] {
+    let list = this.contactsList;
+    if (this.selectedContactsFilter === 'members') {
+      list = list.filter(i => (i.role || '').toLowerCase() === 'plan member');
+    } else if (this.selectedContactsFilter === 'admins') {
+      list = list.filter(i => (i.role || '').toLowerCase() !== 'plan member');
+    } else if (this.selectedContactsFilter !== 'all') {
+      const f = this.selectedContactsFilter.toLowerCase();
+      list = list.filter(i => (i.account_name && i.account_name.toLowerCase().includes(f)));
     }
-    const q = this.individualsSearchQuery.toLowerCase();
-    return this.individualsList.filter(ind =>
+
+    if (!this.contactsSearchQuery) {
+      return list;
+    }
+    const q = this.contactsSearchQuery.toLowerCase().trim();
+    return list.filter(ind =>
       (ind.name && ind.name.toLowerCase().includes(q)) ||
       (ind.email && ind.email.toLowerCase().includes(q)) ||
       (ind.phone && ind.phone.toLowerCase().includes(q)) ||
       (ind.account_name && ind.account_name.toLowerCase().includes(q)) ||
-      (ind.role && ind.role.toLowerCase().includes(q))
+      (ind.role && ind.role.toLowerCase().includes(q)) ||
+      (ind.notes && ind.notes.toLowerCase().includes(q))
     );
   }
 
-  openIndividualTab(ind: IndividualBean) {
-    const tabId = `individual_${ind.id}`;
-    const existing = this.openAccountTabs.find(t => t.id === tabId);
+  get filteredIndividuals(): ContactBean[] {
+    return this.filteredContacts;
+  }
+
+  openCensusRosterModal(carrier?: string) {
+    this.showCensusRosterModal = true;
+    this.censusRosterCarrier = carrier || (this.censusImportResults ? this.censusImportResults.carrier : 'ManuLife');
+    this.isLoadingCensusRoster = true;
+    this.censusRosterSearchQuery = '';
+    this.crmService.getCensusRecords(this.censusRosterCarrier).subscribe({
+      next: (res) => {
+        this.censusRosterRecords = res.list || [];
+        this.isLoadingCensusRoster = false;
+      },
+      error: (err) => {
+        console.error('Failed to load census roster:', err);
+        this.isLoadingCensusRoster = false;
+      }
+    });
+  }
+
+  closeCensusRosterModal() {
+    this.showCensusRosterModal = false;
+    this.censusRosterRecords = [];
+    this.censusRosterSearchQuery = '';
+  }
+
+  get filteredCensusRosterRecords(): any[] {
+    if (!this.censusRosterSearchQuery || !this.censusRosterSearchQuery.trim()) {
+      return this.censusRosterRecords;
+    }
+    const q = this.censusRosterSearchQuery.toLowerCase().trim();
+    return this.censusRosterRecords.filter(r =>
+      (r.employee_name && r.employee_name.toLowerCase().includes(q)) ||
+      (r.certificate_number && String(r.certificate_number).toLowerCase().includes(q)) ||
+      (r.account_name && r.account_name.toLowerCase().includes(q)) ||
+      (r.policy_number && String(r.policy_number).toLowerCase().includes(q))
+    );
+  }
+
+  openClientAccount(clientName: string) {
+    if (!clientName) return;
+    this.activeView = 'accounts';
+
+    // 1. Check if an account tab for this client is already open
+    const openTab = this.openAccountTabs.find(t => 
+      t.type === 'account' && t.account && t.account.name && t.account.name.toLowerCase() === clientName.toLowerCase()
+    );
+    if (openTab) {
+      this.activeAccountTabId = openTab.id;
+      this.updateTabRoute(openTab.id);
+      return;
+    }
+
+    // 2. Check if in loaded recentAccounts
+    const localMatch = this.recentAccounts.find(a => 
+      a.name && a.name.toLowerCase() === clientName.toLowerCase()
+    );
+    if (localMatch) {
+      this.openAccountTab(localMatch);
+      return;
+    }
+
+    // 3. Search backend accounts API by name
+    this.crmService.getRecentAccounts(50, clientName).subscribe({
+      next: (res) => {
+        const found = (res.list || []).find(a => 
+          a.name && a.name.toLowerCase() === clientName.toLowerCase()
+        ) || (res.list && res.list[0]);
+
+        if (found) {
+          if (!this.recentAccounts.some(a => a.id === found.id)) {
+            this.recentAccounts.unshift(found);
+          }
+          this.openAccountTab(found);
+        } else {
+          // Open a client account tab with this name
+          const stubAccount: AccountBean = {
+            id: 'client_' + encodeURIComponent(clientName).replace(/%/g, '_'),
+            name: clientName,
+            account_type: 'Client Account',
+            industry: 'Group Benefits'
+          };
+          this.openAccountTab(stubAccount);
+        }
+      },
+      error: () => {
+        const stubAccount: AccountBean = {
+          id: 'client_' + encodeURIComponent(clientName).replace(/%/g, '_'),
+          name: clientName,
+          account_type: 'Client Account',
+          industry: 'Group Benefits'
+        };
+        this.openAccountTab(stubAccount);
+      }
+    });
+  }
+
+  viewInContactsTable(accountOrQuery?: string) {
+    this.activeView = 'contacts';
+    const target = accountOrQuery || this.censusImportResults?.matchedAccount;
+    if (target) {
+      if (target.toLowerCase().includes('mulgrave') || target.toLowerCase().includes('school')) {
+        this.selectedContactsFilter = 'Mulgrave School';
+        this.contactsSearchQuery = '';
+      } else {
+        this.selectedContactsFilter = 'all';
+        this.contactsSearchQuery = target;
+      }
+    } else {
+      this.selectedContactsFilter = 'all';
+      this.contactsSearchQuery = '';
+    }
+    this.showCensusRosterModal = false;
+    this.loadContacts();
+  }
+
+  viewInIndividualsTable(accountOrQuery?: string) {
+    this.viewInContactsTable(accountOrQuery);
+  }
+
+  getRecordPremium(rec: any): string {
+    if (!rec) return '—';
+    if (rec.raw_data) {
+      try {
+        const raw = typeof rec.raw_data === 'string' ? JSON.parse(rec.raw_data) : rec.raw_data;
+        if (raw && raw.totalMonthlyPremium) {
+          return `$${Number(raw.totalMonthlyPremium).toFixed(2)}`;
+        }
+      } catch (_) {}
+    }
+    return '—';
+  }
+
+  isPhoneLink(phone?: string): boolean {
+    if (!phone) return false;
+    const digits = phone.replace(/\D/g, '');
+    return digits.length >= 7;
+  }
+
+  openContactTab(contact: ContactBean) {
+    const tabId = `contact_${contact.id}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId || t.id === `individual_${contact.id}`);
     if (!existing) {
       this.openAccountTabs.push({
         id: tabId,
-        name: ind.name,
-        individual: { ...ind },
-        originalIndividual: { ...ind },
-        type: 'individual',
+        name: contact.name,
+        contact: { ...contact },
+        originalContact: { ...contact },
+        individual: { ...contact },
+        originalIndividual: { ...contact },
+        type: 'contact',
         activeSubTab: 'details',
         isSaving: false
       });
@@ -1050,37 +1455,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.updateTabRoute(tabId);
   }
 
-  openIndividualTabById(indId: string) {
-    const tabId = `individual_${indId}`;
-    const existing = this.openAccountTabs.find(t => t.id === tabId);
+  openIndividualTab(ind: any) {
+    this.openContactTab(ind);
+  }
+
+  openContactTabById(contactId: string) {
+    const tabId = `contact_${contactId}`;
+    const existing = this.openAccountTabs.find(t => t.id === tabId || t.id === `individual_${contactId}`);
     if (existing) {
       this.activeView = 'accounts';
-      this.activeAccountTabId = tabId;
+      this.activeAccountTabId = existing.id;
       return;
     }
 
-    const loaded = this.individualsList.find(i => i.id === indId);
+    const loaded = this.contactsList.find(i => i.id === contactId);
     if (loaded) {
       this.openAccountTabs.push({
         id: tabId,
         name: loaded.name,
+        contact: { ...loaded },
+        originalContact: { ...loaded },
         individual: { ...loaded },
         originalIndividual: { ...loaded },
-        type: 'individual',
+        type: 'contact',
         activeSubTab: 'details',
         isSaving: false
       });
       this.activeView = 'accounts';
       this.activeAccountTabId = tabId;
     } else {
-      this.crmService.getIndividual(indId).subscribe({
-        next: (ind) => {
+      this.crmService.getContact(contactId).subscribe({
+        next: (c) => {
           this.openAccountTabs.push({
             id: tabId,
-            name: ind.name,
-            individual: { ...ind },
-            originalIndividual: { ...ind },
-            type: 'individual',
+            name: c.name,
+            contact: { ...c },
+            originalContact: { ...c },
+            individual: { ...c },
+            originalIndividual: { ...c },
+            type: 'contact',
             activeSubTab: 'details',
             isSaving: false
           });
@@ -1088,20 +1501,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.activeAccountTabId = tabId;
         },
         error: (err) => {
-          console.error('Failed to fetch individual:', err);
+          console.error('Failed to fetch contact:', err);
         }
       });
     }
   }
 
-  isIndividualDirty(tab: any): boolean {
-    if (!tab || !tab.individual) return false;
-    if (!tab.originalIndividual) {
-      tab.originalIndividual = { ...tab.individual };
+  openIndividualTabById(indId: string) {
+    this.openContactTabById(indId);
+  }
+
+  isContactDirty(tab: any): boolean {
+    const target = tab?.contact || tab?.individual;
+    if (!tab || !target) return false;
+    const origTarget = tab.originalContact || tab.originalIndividual;
+    if (!origTarget) {
+      tab.originalContact = { ...target };
+      tab.originalIndividual = { ...target };
       return false;
     }
-    const curr = tab.individual;
-    const orig = tab.originalIndividual;
+    const curr = target;
+    const orig = origTarget;
     const normalize = (val: any) => (val === null || val === undefined ? '' : String(val).trim());
 
     return (
@@ -1114,35 +1534,48 @@ export class DashboardComponent implements OnInit, OnDestroy {
     );
   }
 
-  saveIndividual(tab: any) {
-    if (!tab.individual.name || !tab.individual.name.trim()) {
+  isIndividualDirty(tab: any): boolean {
+    return this.isContactDirty(tab);
+  }
+
+  saveContact(tab: any) {
+    const target = tab?.contact || tab?.individual;
+    if (!target || !target.name || !target.name.trim()) {
       alert('Name is required.');
       return;
     }
     tab.isSaving = true;
-    this.crmService.updateIndividual(tab.individual.id, tab.individual).subscribe({
+    this.crmService.updateContact(target.id, target).subscribe({
       next: (updated) => {
         tab.isSaving = false;
+        tab.contact = updated;
+        tab.originalContact = { ...updated };
         tab.individual = updated;
         tab.originalIndividual = { ...updated };
         tab.name = updated.name;
-        this.loadIndividuals();
+        tab.customNotes = this.getCensusData(updated.notes).userNotes || '';
+        this.loadContacts();
 
-        // Also update any open account tabs containing this individual
+        // Also update any open account tabs containing this contact
         for (const t of this.openAccountTabs) {
-          if (t.account && t.account.plan_admin && Array.isArray(t.account.plan_admin.individuals)) {
-            const idx = t.account.plan_admin.individuals.findIndex((i: any) => i.id === updated.id);
-            if (idx !== -1) {
-              t.account.plan_admin.individuals[idx] = updated;
-              t.account.plan_admin.names = t.account.plan_admin.individuals.map((i: any) => i.name);
-              t.account.plan_admin.emails = t.account.plan_admin.individuals.map((i: any) => i.email);
-              t.account.plan_admin.phones = t.account.plan_admin.individuals.map((i: any) => i.phone);
+          if (t.account && t.account.plan_admin) {
+            const list = t.account.plan_admin.contacts || t.account.plan_admin.individuals;
+            if (Array.isArray(list)) {
+              const idx = list.findIndex((i: any) => i.id === updated.id);
+              if (idx !== -1) {
+                list[idx] = updated;
+                t.account.plan_admin.names = list.map((i: any) => i.name);
+                t.account.plan_admin.emails = list.map((i: any) => i.email);
+                t.account.plan_admin.phones = list.map((i: any) => i.phone);
+                t.account.plan_admin.contacts = list;
+                t.account.plan_admin.individuals = list;
+              }
             }
           }
         }
 
         this.triggerSuccessModal(
-          'Individual Profile Saved',
+          'Contact Profile Saved',
           `Information for ${updated.name} has been updated in the database.`,
           tab.id,
           'success'
@@ -1150,42 +1583,265 @@ export class DashboardComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         tab.isSaving = false;
-        alert('Failed to save individual: ' + (err.error?.error || err.message));
+        alert('Failed to save contact: ' + (err.error?.error || err.message));
       }
     });
   }
 
-  deleteIndividualRecord(id: string, tabId?: string) {
-    if (!confirm('Are you sure you want to delete this individual record? This cannot be undone.')) return;
-    this.crmService.deleteIndividual(id).subscribe({
+  saveIndividual(tab: any) {
+    this.saveContact(tab);
+  }
+
+  // ==================== CENSUS NOTES PARSER & HELPERS ====================
+  private censusDataCache = new Map<string, ParsedCensusData>();
+
+  getCensusData(notes: string | undefined): ParsedCensusData {
+    if (!notes || typeof notes !== 'string' || !notes.includes('[CENSUS:')) {
+      return {
+        isCensus: false,
+        carrier: '',
+        carrierClass: 'carrier-generic',
+        certNumber: '',
+        policyNumber: '',
+        division: '',
+        classGroup: '',
+        salary: '',
+        hireDate: '',
+        birthDate: '',
+        address: '',
+        benefits: [],
+        dependents: [],
+        dependentsCount: 0,
+        userNotes: notes || '',
+        rawCensusLine: ''
+      };
+    }
+
+    const cached = this.censusDataCache.get(notes);
+    if (cached) {
+      return cached;
+    }
+
+    const lines = notes.split('\n');
+    let rawCensusLine = '';
+    const userNotesLines: string[] = [];
+
+    for (const line of lines) {
+      if (line.includes('[CENSUS:') && !rawCensusLine) {
+        rawCensusLine = line.trim();
+      } else if (line.trim()) {
+        userNotesLines.push(line);
+      }
+    }
+
+    const userNotes = userNotesLines.join('\n').trim();
+
+    const carrierMatch = rawCensusLine.match(/\[CENSUS:\s*([^\]]+)\]/i);
+    const carrier = carrierMatch ? carrierMatch[1].trim() : 'Census Record';
+
+    let carrierClass = 'carrier-generic';
+    const cUpper = carrier.toUpperCase();
+    if (cUpper.includes('MANULIFE')) carrierClass = 'carrier-manulife';
+    else if (cUpper.includes('CANADALIFE') || cUpper.includes('CANADA LIFE')) carrierClass = 'carrier-canadalife';
+    else if (cUpper.includes('GROUPSOURCE')) carrierClass = 'carrier-groupsource';
+    else if (cUpper.includes('SUNLIFE') || cUpper.includes('SUN LIFE')) carrierClass = 'carrier-sunlife';
+
+    let certNumber = '';
+    let policyNumber = '';
+    let division = '';
+    let classGroup = '';
+    let salary = '';
+    let hireDate = '';
+    let birthDate = '';
+    let address = '';
+    const benefits: ParsedCensusBenefit[] = [];
+    const dependents: ParsedCensusDependent[] = [];
+    let dependentsCount = 0;
+
+    const parts = rawCensusLine.split(' | ');
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith('Cert:')) {
+        certNumber = trimmed.replace(/^Cert:\s*/i, '').replace(/^#/, '').trim();
+      } else if (trimmed.startsWith('Policy:')) {
+        policyNumber = trimmed.replace(/^Policy:\s*/i, '').replace(/^#/, '').trim();
+      } else if (trimmed.startsWith('Div:')) {
+        division = trimmed.replace(/^Div:\s*/i, '').trim();
+      } else if (trimmed.startsWith('Class:')) {
+        classGroup = trimmed.replace(/^Class:\s*/i, '').trim();
+      } else if (trimmed.startsWith('Salary:')) {
+        salary = trimmed.replace(/^Salary:\s*/i, '').trim();
+      } else if (trimmed.startsWith('Hired:')) {
+        hireDate = trimmed.replace(/^Hired:\s*/i, '').trim();
+      } else if (trimmed.startsWith('DOB:')) {
+        birthDate = trimmed.replace(/^DOB:\s*/i, '').trim();
+      } else if (trimmed.startsWith('Address:')) {
+        address = trimmed.replace(/^Address:\s*/i, '').trim();
+      } else if (trimmed.startsWith('Benefits:')) {
+        const bStr = trimmed.replace(/^Benefits:\s*/i, '').trim();
+        const items = bStr.split(/,\s*(?=[A-Za-z])/);
+        for (const item of items) {
+          const bTrim = item.trim();
+          if (!bTrim) continue;
+          const m = bTrim.match(/^([A-Za-z0-9_&]+)(?:\s*\(([^)]+)\))?(?:\s*\$([\d,]+(?:\.\d+)?))?$/);
+          if (m) {
+            const code = m[1].trim();
+            const covType = (m[2] || '').trim();
+            const covAmt = m[3] ? `$${m[3].trim()}` : '';
+            const meta = CENSUS_BENEFIT_MAP[code.toUpperCase()] || {
+              name: code.replace(/_/g, ' '),
+              icon: 'verified_user',
+              category: 'general'
+            };
+            let periodSuffix = '';
+            if (covAmt) {
+              if (code.toUpperCase() === 'STD') periodSuffix = '/wk';
+              else if (code.toUpperCase() === 'LTD') periodSuffix = '/mo';
+            }
+            benefits.push({
+              code,
+              name: meta.name,
+              icon: meta.icon,
+              category: meta.category,
+              coverageType: covType,
+              coverageAmount: covAmt,
+              periodSuffix
+            });
+          } else {
+            benefits.push({
+              code: bTrim,
+              name: bTrim.replace(/_/g, ' '),
+              icon: 'verified_user',
+              category: 'general',
+              coverageType: '',
+              coverageAmount: '',
+              periodSuffix: ''
+            });
+          }
+        }
+      } else if (trimmed.startsWith('Dependents')) {
+        const depMatch = trimmed.match(/^Dependents(?:\s*\((\d+)\))?:\s*(.*)$/i);
+        if (depMatch) {
+          if (depMatch[1]) {
+            dependentsCount = parseInt(depMatch[1], 10);
+          }
+          const depListStr = depMatch[2].trim();
+          const depRegex = /([^,\[]+?)\s*(?:\[(.*?)\])?(?=,|$)/g;
+          let dMatch;
+          while ((dMatch = depRegex.exec(depListStr)) !== null) {
+            const dName = dMatch[1].trim();
+            const dRel = (dMatch[2] || '').trim();
+            if (dName) {
+              dependents.push({
+                name: dName,
+                relationship: dRel || 'Dependent'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (!dependentsCount) {
+      dependentsCount = dependents.length;
+    }
+
+    const result: ParsedCensusData = {
+      isCensus: true,
+      carrier,
+      carrierClass,
+      certNumber,
+      policyNumber,
+      division,
+      classGroup,
+      salary,
+      hireDate,
+      birthDate,
+      address,
+      benefits,
+      dependents,
+      dependentsCount,
+      userNotes,
+      rawCensusLine
+    };
+
+    this.censusDataCache.set(notes, result);
+    return result;
+  }
+
+  getTabUserNotes(tab: any): string {
+    if (!tab) return '';
+    if (tab.customNotes === undefined) {
+      const target = tab.contact || tab.individual;
+      const parsed = this.getCensusData(target?.notes);
+      tab.customNotes = parsed.userNotes || '';
+    }
+    return tab.customNotes;
+  }
+
+  onTabUserNotesChange(tab: any, val: string): void {
+    if (!tab) return;
+    tab.customNotes = val;
+    const target = tab.contact || tab.individual;
+    if (!target) return;
+    const census = this.getCensusData(target.notes);
+    if (census.isCensus && census.rawCensusLine) {
+      target.notes = val && val.trim() ? `${census.rawCensusLine}\n\n${val.trim()}` : census.rawCensusLine;
+    } else {
+      target.notes = val;
+    }
+  }
+
+  onRawNotesChange(tab: any): void {
+    if (!tab) return;
+    const target = tab.contact || tab.individual;
+    if (target) {
+      this.censusDataCache.delete(target.notes);
+      const parsed = this.getCensusData(target.notes);
+      tab.customNotes = parsed.userNotes || '';
+    }
+  }
+
+  deleteContactRecord(id: string, tabId?: string) {
+    if (!confirm('Are you sure you want to delete this contact record? This cannot be undone.')) return;
+    this.crmService.deleteContact(id).subscribe({
       next: () => {
-        this.individualsList = this.individualsList.filter(i => i.id !== id);
+        this.contactsList = this.contactsList.filter(i => i.id !== id);
         if (tabId) {
           this.closeAccountTab(tabId, new MouseEvent('click'));
         }
         for (const t of this.openAccountTabs) {
-          if (t.account && t.account.plan_admin && Array.isArray(t.account.plan_admin.individuals)) {
-            t.account.plan_admin.individuals = t.account.plan_admin.individuals.filter((i: any) => i.id !== id);
-            t.account.plan_admin.names = t.account.plan_admin.individuals.map((i: any) => i.name);
-            t.account.plan_admin.emails = t.account.plan_admin.individuals.map((i: any) => i.email);
-            t.account.plan_admin.phones = t.account.plan_admin.individuals.map((i: any) => i.phone);
+          if (t.account && t.account.plan_admin) {
+            const list = t.account.plan_admin.contacts || t.account.plan_admin.individuals;
+            if (Array.isArray(list)) {
+              const filtered = list.filter((i: any) => i.id !== id);
+              t.account.plan_admin.contacts = filtered;
+              t.account.plan_admin.individuals = filtered;
+              t.account.plan_admin.names = filtered.map((i: any) => i.name);
+              t.account.plan_admin.emails = filtered.map((i: any) => i.email);
+              t.account.plan_admin.phones = filtered.map((i: any) => i.phone);
+            }
           }
         }
         this.triggerSuccessModal(
-          'Individual Deleted',
-          'The individual record was removed from the database.',
+          'Contact Deleted',
+          'The contact record was removed from the database.',
           null,
           'success'
         );
       },
       error: (err) => {
-        alert('Failed to delete individual: ' + (err.error?.error || err.message));
+        alert('Failed to delete contact: ' + (err.error?.error || err.message));
       }
     });
   }
 
-  openCreateIndividualModal() {
-    this.newIndividualForm = {
+  deleteIndividualRecord(id: string, tabId?: string) {
+    this.deleteContactRecord(id, tabId);
+  }
+
+  openCreateContactModal() {
+    this.newContactForm = {
       name: '',
       email: '',
       phone: '',
@@ -1195,37 +1851,182 @@ export class DashboardComponent implements OnInit, OnDestroy {
       notes: '',
       status: 'Active'
     };
-    this.showCreateIndividualModal = true;
+    this.showCreateContactModal = true;
+  }
+
+  openCreateIndividualModal() {
+    this.openCreateContactModal();
+  }
+
+  closeCreateContactModal() {
+    this.showCreateContactModal = false;
   }
 
   closeCreateIndividualModal() {
-    this.showCreateIndividualModal = false;
+    this.closeCreateContactModal();
+  }
+
+  submitNewContact() {
+    if (!this.newContactForm.name || !this.newContactForm.name.trim()) {
+      alert('Please enter a name for the contact.');
+      return;
+    }
+    this.isCreatingContact = true;
+    if (this.newContactForm.account_id) {
+      const match = this.recentAccounts.find(a => a.id === this.newContactForm.account_id);
+      if (match) {
+        this.newContactForm.account_name = match.name;
+      }
+    }
+    this.crmService.createContact(this.newContactForm).subscribe({
+      next: (created) => {
+        this.isCreatingContact = false;
+        this.showCreateContactModal = false;
+        this.loadContacts();
+        this.openContactTab(created);
+      },
+      error: (err) => {
+        this.isCreatingContact = false;
+        alert('Failed to create contact: ' + (err.error?.error || err.message));
+      }
+    });
   }
 
   submitNewIndividual() {
-    if (!this.newIndividualForm.name || !this.newIndividualForm.name.trim()) {
-      alert('Please enter a name for the individual.');
-      return;
+    this.submitNewContact();
+  }
+
+  // ==================== CARRIERS ====================
+
+  get filteredCarriers(): Carrier[] {
+    if (!this.carriersSearchQuery || !this.carriersSearchQuery.trim()) {
+      return this.carriersList;
     }
-    this.isCreatingIndividual = true;
-    if (this.newIndividualForm.account_id) {
-      const match = this.recentAccounts.find(a => a.id === this.newIndividualForm.account_id);
-      if (match) {
-        this.newIndividualForm.account_name = match.name;
-      }
-    }
-    this.crmService.createIndividual(this.newIndividualForm).subscribe({
-      next: (created) => {
-        this.isCreatingIndividual = false;
-        this.showCreateIndividualModal = false;
-        this.loadIndividuals();
-        this.openIndividualTab(created);
+    const q = this.carriersSearchQuery.toLowerCase().trim();
+    return this.carriersList.filter(c => {
+      const nameMatch = (c.carrier || '').toLowerCase().includes(q);
+      const descMatch = (c.description || '').toLowerCase().includes(q);
+      const identMatch = (c.clientIdentifier || '').toLowerCase().includes(q);
+      const clientsMatch = Array.isArray(c.clients) 
+        ? c.clients.some(client => (client || '').toLowerCase().includes(q))
+        : String(c.clients || '').toLowerCase().includes(q);
+      return nameMatch || descMatch || identMatch || clientsMatch;
+    });
+  }
+
+  loadCarriers() {
+    this.isLoadingCarriers = true;
+    this.crmService.getCarriers().subscribe({
+      next: (res) => {
+        this.carriersList = res.list || [];
+        this.isLoadingCarriers = false;
       },
       error: (err) => {
-        this.isCreatingIndividual = false;
-        alert('Failed to create individual: ' + (err.error?.error || err.message));
+        console.error('Failed to load carriers:', err);
+        this.isLoadingCarriers = false;
       }
     });
+  }
+
+  openCreateCarrierModal() {
+    this.isEditingCarrier = false;
+    this.selectedCarrierId = null;
+    this.carrierModalForm = {
+      carrier: '',
+      description: '',
+      clientIdentifier: '',
+      clients: ''
+    };
+    this.showCreateCarrierModal = true;
+  }
+
+  openEditCarrierModal(carrier: Carrier) {
+    this.isEditingCarrier = true;
+    this.selectedCarrierId = carrier.id;
+    this.carrierModalForm = {
+      carrier: carrier.carrier || '',
+      description: carrier.description || '',
+      clientIdentifier: carrier.clientIdentifier || '',
+      clients: Array.isArray(carrier.clients) ? carrier.clients.join(', ') : String(carrier.clients || '')
+    };
+    this.showCreateCarrierModal = true;
+  }
+
+  closeCarrierModal() {
+    this.showCreateCarrierModal = false;
+    this.selectedCarrierId = null;
+    this.carrierModalForm = {
+      carrier: '',
+      description: '',
+      clientIdentifier: '',
+      clients: ''
+    };
+  }
+
+  saveCarrier() {
+    if (!this.carrierModalForm.carrier.trim()) {
+      alert('Please enter a carrier name.');
+      return;
+    }
+
+    const clientsArray = this.carrierModalForm.clients
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    this.isCreatingCarrier = true;
+
+    if (this.isEditingCarrier && this.selectedCarrierId) {
+      this.crmService.updateCarrier(this.selectedCarrierId, {
+        carrier: this.carrierModalForm.carrier.trim(),
+        description: this.carrierModalForm.description.trim(),
+        clientIdentifier: this.carrierModalForm.clientIdentifier.trim(),
+        clients: clientsArray
+      }).subscribe({
+        next: () => {
+          this.isCreatingCarrier = false;
+          this.closeCarrierModal();
+          this.loadCarriers();
+          this.triggerSuccessModal('Carrier Updated', 'Carrier details have been updated successfully.');
+        },
+        error: (err) => {
+          this.isCreatingCarrier = false;
+          alert('Failed to update carrier: ' + (err.error?.error || err.message));
+        }
+      });
+    } else {
+      this.crmService.createCarrier({
+        carrier: this.carrierModalForm.carrier.trim(),
+        description: this.carrierModalForm.description.trim(),
+        clientIdentifier: this.carrierModalForm.clientIdentifier.trim(),
+        clients: clientsArray
+      }).subscribe({
+        next: () => {
+          this.isCreatingCarrier = false;
+          this.closeCarrierModal();
+          this.loadCarriers();
+          this.triggerSuccessModal('Carrier Created', 'New carrier record has been created successfully.');
+        },
+        error: (err) => {
+          this.isCreatingCarrier = false;
+          alert('Failed to create carrier: ' + (err.error?.error || err.message));
+        }
+      });
+    }
+  }
+
+  confirmDeleteCarrier(id: string, name: string) {
+    if (confirm(`Are you sure you want to delete carrier "${name}"?`)) {
+      this.crmService.deleteCarrier(id).subscribe({
+        next: () => {
+          this.loadCarriers();
+          this.triggerSuccessModal('Carrier Deleted', `Carrier "${name}" has been deleted.`);
+        },
+        error: (err) => {
+          alert('Failed to delete carrier: ' + (err.error?.error || err.message));
+        }
+      });
+    }
   }
 
   openMeetingTab(meeting: any) {
@@ -1347,6 +2148,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return account.account_type || account.accountType || 'Group Client - Benefits';
   }
 
+  getAccountDescription(accountOrDesc?: any): string {
+    if (!accountOrDesc) return '';
+    const raw = typeof accountOrDesc === 'string' ? accountOrDesc : (accountOrDesc.description || '');
+    if (!raw) return '';
+    return raw
+      .replace(/(?:\s*\|\s*)?\[(Account Type|Renewal Date|Renewal Date - Benefits|Carrier or TPA|Carrier\/TPA)\]:[^|]*/gi, '')
+      .replace(/^\s*\|\s*/, '')
+      .trim();
+  }
+
   triggerSuccessModal(title: string, body: string, tabId: string | null = null, type: 'success' | 'warning' | 'error' = 'success') {
     this.successModalTitle = title;
     this.successModalBody = body;
@@ -1370,9 +2181,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
       } else if (this.successModalTabId.startsWith('account_')) {
         const id = this.successModalTabId.replace('account_', '');
         this.openAccountTabById(id);
-      } else if (this.successModalTabId.startsWith('individual_')) {
-        const id = this.successModalTabId.replace('individual_', '');
-        this.openIndividualTabById(id);
+      } else if (this.successModalTabId.startsWith('contact_') || this.successModalTabId.startsWith('individual_')) {
+        const id = this.successModalTabId.replace('contact_', '').replace('individual_', '');
+        this.openContactTabById(id);
       }
     }
     this.closeSuccessModal();
@@ -1491,7 +2302,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
             subject: tab.meetingForm.subject,
             body: {
               contentType: 'HTML',
-              content: `${tab.meetingForm.description}<br/><br/><i>Created via Redcliffe Portal for ${tab.account.name}</i>`
+              content: `${tab.meetingForm.description}<br/><br/><i>Created via ${this.isDemoUser ? 'Demo Financial' : 'Redcliffe'} Portal for ${tab.account.name}</i>`
             },
             start: {
               dateTime: new Date(tab.meetingForm.dateStart).toISOString(),
@@ -1702,6 +2513,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
+  syncUsersFromSpice() {
+    this.isSyncingUsers = true;
+    this.crmService.syncUsers().subscribe({
+      next: (res) => {
+        this.isSyncingUsers = false;
+        if (res.list) {
+          this.usersList = res.list;
+        } else {
+          this.loadRecentUsers();
+        }
+      },
+      error: (err) => {
+        this.isSyncingUsers = false;
+        alert('Failed to sync users from SpiceCRM: ' + (err.error?.error || err.message));
+      }
+    });
+  }
+
   get filteredUsers() {
     if (!this.usersSearchQuery) {
       return this.usersList;
@@ -1718,10 +2547,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return val === true || val === 1 || val === '1' || val === 'true' || val === 'yes' || val === 'Checked' || val === 'checked';
   }
 
-  @HostListener('document:click')
-  onDocumentClick() {
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event?: MouseEvent) {
     this.activeMenuRowId = null;
     this.activeMenuType = null;
+    if (this.isGlobalSearchOpen && event) {
+      const target = event.target as HTMLElement;
+      if (!target || !target.isConnected) {
+        return;
+      }
+      if (target.closest('.global-search-container') || target.closest('[data-nav-id="search"]')) {
+        return;
+      }
+      this.closeGlobalSearch();
+    }
   }
 
   toggleRowMenu(id: string, type: 'meeting' | 'user' | 'report', event: Event) {
@@ -1963,6 +2802,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
       count,
       percent: Math.round((count / records.length) * 100)
     }));
+  }
+
+  formatReportCellValue(row: any, col: any): string {
+    if (!row || !col) return '—';
+    const val = row[col.label];
+    if (val === null || val === undefined || val === '') return '—';
+    if (typeof val === 'object') {
+      return val.name || val.value || val.user_name || 'Administrator';
+    }
+    const str = String(val).trim();
+    if (str === '[object Object]') {
+      return 'Administrator';
+    }
+    return str;
   }
 
   closeDetailsModal() {
@@ -2212,8 +3065,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   toggleTheme() {
     this.isDarkMode = !this.isDarkMode;
-    localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
+    const theme = this.isDarkMode ? 'dark' : 'light';
+    localStorage.setItem('theme', theme);
     this.applyTheme();
+    this.crmService.saveUserPreferences({ theme }).subscribe({
+      error: (err) => console.warn('[Preferences] Failed to persist theme:', err)
+    });
   }
 
   applyTheme() {
@@ -2222,6 +3079,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
       body.classList.remove('light-theme');
     } else {
       body.classList.add('light-theme');
+    }
+  }
+
+  toggleCornerStyle() {
+    this.isSquareCorners = !this.isSquareCorners;
+    const feel = this.isSquareCorners ? 'square' : 'rounded';
+    localStorage.setItem('redcliffe_corner_style', feel);
+    localStorage.setItem('feel', feel);
+    this.applyCornerStyle();
+
+    this.crmService.saveUserPreferences({
+      corner_style: feel,
+      feel: feel
+    }).subscribe({
+      next: () => {
+        console.log(`[Preferences] Corner style '${feel}' saved successfully.`);
+      },
+      error: (err) => {
+        console.warn('[Preferences] Failed to persist corner style:', err);
+      }
+    });
+  }
+
+  applyCornerStyle() {
+    const body = document.body;
+    if (this.isSquareCorners) {
+      body.classList.add('feel-square');
+    } else {
+      body.classList.remove('feel-square');
     }
   }
 
@@ -2365,6 +3251,162 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ==================== CENSUS IMPORT METHODS ====================
+
+  onContactsDragOver(event: DragEvent) {
+    event.preventDefault();
+    this.contactsDragOver = true;
+  }
+  onIndividualsDragOver(event: DragEvent) {
+    this.onContactsDragOver(event);
+  }
+
+  onContactsDragLeave(event: DragEvent) {
+    event.preventDefault();
+    this.contactsDragOver = false;
+  }
+  onIndividualsDragLeave(event: DragEvent) {
+    this.onContactsDragLeave(event);
+  }
+
+  onContactsDrop(event: DragEvent) {
+    event.preventDefault();
+    this.contactsDragOver = false;
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      this.addCensusFiles(Array.from(event.dataTransfer.files), 'contacts');
+    }
+  }
+  onIndividualsDrop(event: DragEvent) {
+    this.onContactsDrop(event);
+  }
+
+  onContactsFilesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.addCensusFiles(Array.from(input.files), 'contacts');
+    }
+  }
+  onIndividualsFilesSelected(event: Event) {
+    this.onContactsFilesSelected(event);
+  }
+
+  onCarriersDragOver(event: DragEvent) {
+    event.preventDefault();
+    this.carriersDragOver = true;
+  }
+
+  onCarriersDragLeave(event: DragEvent) {
+    event.preventDefault();
+    this.carriersDragOver = false;
+  }
+
+  onCarriersDrop(event: DragEvent) {
+    event.preventDefault();
+    this.carriersDragOver = false;
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      this.addCensusFiles(Array.from(event.dataTransfer.files), 'carriers');
+    }
+  }
+
+  onCarriersFilesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.addCensusFiles(Array.from(input.files), 'carriers');
+    }
+  }
+
+  addCensusFiles(newFiles: File[], target: 'contacts' | 'individuals' | 'carriers') {
+    const targetList = (target === 'contacts' || target === 'individuals') ? this.contactsCensusFiles : this.carriersCensusFiles;
+    for (const f of newFiles) {
+      if (!targetList.some(existing => existing.name === f.name && existing.size === f.size)) {
+        targetList.push(f);
+      }
+    }
+    const hasEnroll = targetList.some(f => f.name.toUpperCase().includes('ENROLL') || f.name.toUpperCase().includes('MANULIFE'));
+    if (hasEnroll) {
+      this.selectedCensusCarrier = 'ManuLife';
+    }
+  }
+
+  removeCensusFile(index: number, target: 'contacts' | 'individuals' | 'carriers') {
+    if (target === 'contacts' || target === 'individuals') {
+      this.contactsCensusFiles.splice(index, 1);
+    } else {
+      this.carriersCensusFiles.splice(index, 1);
+    }
+  }
+
+  clearCensusFiles(target: 'contacts' | 'individuals' | 'carriers') {
+    if (target === 'contacts' || target === 'individuals') {
+      this.contactsCensusFiles = [];
+    } else {
+      this.carriersCensusFiles = [];
+    }
+    this.censusImportResults = null;
+    this.censusErrorMessage = '';
+  }
+
+  getCensusFileTag(fileName: string): { label: string; class: string } {
+    const upper = fileName.toUpperCase();
+    if (upper.endsWith('.XLSX') || upper.endsWith('.XLS') || upper.includes('MEMBERDETAIL')) {
+      return { label: 'ManuLife Excel (65-Col)', class: 'tag-emp' };
+    } else if (upper.includes('BILLINGPREMIUM') || upper.includes('GROUPSOURCE')) {
+      return { label: 'GroupSource CSV (56-Col)', class: 'tag-emp' };
+    } else if (upper.includes('EMP')) {
+      return { label: 'CanadaLife EMP (40-Col)', class: 'tag-emp' };
+    } else if (upper.includes('BFT')) {
+      return { label: 'CanadaLife BFT (20-Col)', class: 'tag-bft' };
+    } else if (upper.includes('BNC')) {
+      return { label: 'CanadaLife BNC (14-Col)', class: 'tag-bnc' };
+    }
+    return { label: 'Census Data', class: 'tag-generic' };
+  }
+
+  startCensusImport(target: 'contacts' | 'individuals' | 'carriers') {
+    const files = (target === 'contacts' || target === 'individuals') ? this.contactsCensusFiles : this.carriersCensusFiles;
+    if (!files || files.length === 0) return;
+
+    this.isUploadingCensus = true;
+    this.censusUploadProgress = 15;
+    this.censusImportResults = null;
+    this.censusErrorMessage = '';
+
+    const interval = setInterval(() => {
+      if (this.censusUploadProgress < 85) {
+        this.censusUploadProgress += 15;
+      }
+    }, 200);
+
+    this.crmService.importCensusData(files, this.selectedCensusCarrier).subscribe({
+      next: (result) => {
+        clearInterval(interval);
+        this.censusUploadProgress = 100;
+        this.isUploadingCensus = false;
+        this.censusImportResults = result;
+
+        // Auto reload contacts
+        this.loadContacts();
+
+        // Also reload carriers
+        this.loadCarriers();
+
+        // Clear staged files on successful import so they don't linger
+        this.contactsCensusFiles = [];
+        this.carriersCensusFiles = [];
+      },
+      error: (err) => {
+        clearInterval(interval);
+        this.isUploadingCensus = false;
+        this.censusErrorMessage = err.error?.error || err.message || 'Census import failed';
+      }
+    });
+  }
+
+  dismissCensusResults() {
+    this.censusImportResults = null;
+    this.censusErrorMessage = '';
+  }
+
   showDeleteModal = false;
   accountIdToDelete: string | null = null;
   accountNameToDelete: string = '';
@@ -2447,16 +3489,34 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // 2. Fetch from backend user preferences (syncs across browsers/sessions)
     this.crmService.getUserPreferences().subscribe({
       next: (res) => {
-        if (res && res.preferences && res.preferences.account_columns) {
-          this.selectedAccountColumns = {
-            ...this.selectedAccountColumns,
-            ...res.preferences.account_columns
-          };
-          localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
+        if (res && res.preferences) {
+          if (res.preferences.account_columns) {
+            this.selectedAccountColumns = {
+              ...this.selectedAccountColumns,
+              ...res.preferences.account_columns
+            };
+            localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
+          }
+          if (res.preferences.corner_style !== undefined || res.preferences.feel !== undefined) {
+            const feel = res.preferences.corner_style || res.preferences.feel;
+            this.isSquareCorners = feel === 'square';
+            localStorage.setItem('redcliffe_corner_style', this.isSquareCorners ? 'square' : 'rounded');
+            localStorage.setItem('feel', this.isSquareCorners ? 'square' : 'rounded');
+            this.applyCornerStyle();
+          }
+          if (res.preferences.theme) {
+            this.isDarkMode = res.preferences.theme !== 'light';
+            localStorage.setItem('theme', this.isDarkMode ? 'dark' : 'light');
+            this.applyTheme();
+          }
+          if (res.preferences.nav_order && Array.isArray(res.preferences.nav_order)) {
+            this.applyNavOrder(res.preferences.nav_order);
+            localStorage.setItem('redcliffe_nav_order', JSON.stringify(this.navButtons.map(b => b.id)));
+          }
         }
       },
       error: (err) => {
-        console.warn('Could not fetch user column preferences:', err?.message || err);
+        console.warn('Could not fetch user preferences:', err?.message || err);
       }
     });
   }
@@ -2510,5 +3570,455 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.selectedAccountColumns[colId] = !this.selectedAccountColumns[colId];
     localStorage.setItem('redcliffe_account_columns', JSON.stringify(this.selectedAccountColumns));
     this.crmService.saveUserPreferences({ account_columns: this.selectedAccountColumns }).subscribe();
+  }
+
+  // ==================== CONFIGURABLE NAV BUTTONS METHODS ====================
+
+  trackByNavId(index: number, item: NavButtonItem): string {
+    return item.id;
+  }
+
+  isNavButtonActive(btnId: string): boolean {
+    if (btnId === 'search') {
+      return this.isGlobalSearchOpen;
+    }
+    if (btnId === 'contacts') {
+      return this.activeView === 'contacts' || this.activeView === 'individuals';
+    }
+    return this.activeView === btnId;
+  }
+
+  onNavButtonClick(btn: NavButtonItem, event?: MouseEvent) {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (this.preventNavClick || this.isNavDragging) return;
+    if (btn.id === 'search') {
+      if (this.isGlobalSearchOpen) {
+        this.closeGlobalSearch(event);
+      } else {
+        this.openGlobalSearch(event);
+      }
+      return;
+    }
+    this.selectApp(btn.appName);
+  }
+
+  onNavPointerDown(event: PointerEvent, index: number, btn: NavButtonItem) {
+    if (event.button !== 0) return; // Left mouse click only
+
+    this.cleanupNavPointerListeners();
+    this.pendingDragIndex = index;
+    this.navPointerStartX = event.clientX;
+    this.navPointerStartY = event.clientY;
+    this.navPointerCurrentPos = { x: event.clientX, y: event.clientY };
+    this.baseOffsetX = 0;
+
+    window.addEventListener('pointermove', this.onWindowPointerMoveBound);
+    window.addEventListener('pointerup', this.onWindowPointerUpBound);
+    window.addEventListener('pointercancel', this.onWindowPointerUpBound);
+
+    // 280ms hold threshold triggers the "lift up" state
+    this.navHoldTimer = setTimeout(() => {
+      this.startNavDrag(index, event.clientX);
+    }, 280);
+  }
+
+  onWindowPointerMove(event: PointerEvent) {
+    this.navPointerCurrentPos = { x: event.clientX, y: event.clientY };
+
+    if (!this.isNavDragging) {
+      if (this.pendingDragIndex === -1) return;
+      const dist = Math.hypot(
+        event.clientX - this.navPointerStartX,
+        event.clientY - this.navPointerStartY
+      );
+      if (dist > 5) {
+        clearTimeout(this.navHoldTimer);
+        this.startNavDrag(this.pendingDragIndex, event.clientX);
+      }
+      return;
+    }
+
+    this.updateNavDrag(event);
+  }
+
+  startNavDrag(index: number, clientX: number) {
+    if (this.isNavDragging || index < 0 || index >= this.navButtons.length) return;
+
+    this.isNavDragging = true;
+    this.draggedNavIndex = index;
+    this.draggedNavId = this.navButtons[index].id;
+    this.navPointerStartX = clientX;
+    this.baseOffsetX = 0;
+    this.originalNavOrderBeforeDrag = [...this.navButtons];
+
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    this.cdr.detectChanges();
+    this.applyDraggedTransform(0);
+  }
+
+  updateNavDrag(event: PointerEvent) {
+    if (!this.isNavDragging || this.draggedNavIndex === -1) return;
+
+    const currentX = event.clientX;
+    const currentDeltaX = (currentX - this.navPointerStartX) - this.baseOffsetX;
+    this.applyDraggedTransform(currentDeltaX);
+
+    const buttonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+    if (!buttonEls || buttonEls.length <= 1) return;
+
+    const currentIndex = this.draggedNavIndex;
+
+    // Moving right
+    if (currentIndex < buttonEls.length - 1) {
+      const nextEl = buttonEls[currentIndex + 1];
+      const nextRect = nextEl.getBoundingClientRect();
+      const nextCenter = nextRect.left + nextRect.width / 2;
+      if (currentX > nextCenter) {
+        this.reorderNavButtons(currentIndex, currentIndex + 1);
+        return;
+      }
+    }
+
+    // Moving left
+    if (currentIndex > 0) {
+      const prevEl = buttonEls[currentIndex - 1];
+      const prevRect = prevEl.getBoundingClientRect();
+      const prevCenter = prevRect.left + prevRect.width / 2;
+      if (currentX < prevCenter) {
+        this.reorderNavButtons(currentIndex, currentIndex - 1);
+        return;
+      }
+    }
+  }
+
+  reorderNavButtons(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const buttonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= buttonEls.length || toIndex >= buttonEls.length) return;
+
+    // 1. Record old screen positions for all buttons
+    const oldPositions = new Map<string, number>();
+    this.navButtons.forEach((btn, idx) => {
+      if (buttonEls[idx]) {
+        oldPositions.set(btn.id, buttonEls[idx].getBoundingClientRect().left);
+      }
+    });
+
+    const oldDraggedLeft = oldPositions.get(this.navButtons[fromIndex].id) || 0;
+
+    // 2. Reorder in array
+    const [movedItem] = this.navButtons.splice(fromIndex, 1);
+    this.navButtons.splice(toIndex, 0, movedItem);
+    this.draggedNavIndex = toIndex;
+
+    // 3. Update DOM via change detection
+    this.cdr.detectChanges();
+
+    // 4. Measure new screen positions
+    const newButtonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+    const newPositions = new Map<string, number>();
+    this.navButtons.forEach((btn, idx) => {
+      if (newButtonEls[idx]) {
+        newPositions.set(btn.id, newButtonEls[idx].getBoundingClientRect().left);
+      }
+    });
+
+    const newDraggedLeft = newPositions.get(movedItem.id) || 0;
+
+    // 5. Compensate base offset so dragged element stays locked under cursor without jumping
+    const slotShift = newDraggedLeft - oldDraggedLeft;
+    this.baseOffsetX += slotShift;
+
+    const currentDeltaX = (this.navPointerCurrentPos.x - this.navPointerStartX) - this.baseOffsetX;
+    const draggedEl = newButtonEls[toIndex];
+    if (draggedEl) {
+      draggedEl.style.transform = `translateX(${currentDeltaX}px) translateY(-8px) scale(1.08)`;
+      draggedEl.style.zIndex = '1000';
+      draggedEl.style.transition = 'none';
+    }
+
+    // 6. Smooth FLIP animation on all shifted sibling buttons
+    newButtonEls.forEach((el, idx) => {
+      if (idx === toIndex) return; // Skip dragged element
+      const btnId = this.navButtons[idx].id;
+      const oldLeft = oldPositions.get(btnId);
+      const newLeft = newPositions.get(btnId);
+
+      if (oldLeft !== undefined && newLeft !== undefined) {
+        const delta = oldLeft - newLeft;
+        if (delta !== 0) {
+          el.style.transform = `translateX(${delta}px)`;
+          el.style.transition = 'none';
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              el.style.transition = 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)';
+              el.style.transform = '';
+              setTimeout(() => {
+                el.style.transition = '';
+              }, 230);
+            });
+          });
+        }
+      }
+    });
+  }
+
+  applyDraggedTransform(deltaX: number) {
+    const buttonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+    const draggedEl = buttonEls[this.draggedNavIndex];
+    if (draggedEl) {
+      draggedEl.style.transform = `translateX(${deltaX}px) translateY(-8px) scale(1.08)`;
+      draggedEl.style.zIndex = '1000';
+      draggedEl.style.boxShadow = '0 16px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(99, 102, 241, 0.5)';
+      draggedEl.style.borderColor = 'rgba(99, 102, 241, 0.9)';
+      draggedEl.style.transition = 'none';
+    }
+  }
+
+  onWindowPointerUp(event: PointerEvent) {
+    clearTimeout(this.navHoldTimer);
+    window.removeEventListener('pointermove', this.onWindowPointerMoveBound);
+    window.removeEventListener('pointerup', this.onWindowPointerUpBound);
+    window.removeEventListener('pointercancel', this.onWindowPointerUpBound);
+
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+
+    if (this.isNavDragging) {
+      this.preventNavClick = true;
+      setTimeout(() => { this.preventNavClick = false; }, 200);
+
+      const buttonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+      const droppedEl = buttonEls[this.draggedNavIndex];
+      if (droppedEl) {
+        droppedEl.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s ease, border-color 0.2s ease';
+        droppedEl.style.transform = 'translateX(0) translateY(0) scale(1)';
+        droppedEl.style.boxShadow = '';
+        droppedEl.style.borderColor = '';
+        droppedEl.style.zIndex = '';
+
+        setTimeout(() => {
+          droppedEl.style.transition = '';
+          droppedEl.style.transform = '';
+        }, 220);
+      }
+
+      this.isNavDragging = false;
+      this.draggedNavIndex = -1;
+      this.draggedNavId = null;
+      this.pendingDragIndex = -1;
+
+      this.saveNavOrderPreferences();
+    } else {
+      this.pendingDragIndex = -1;
+    }
+  }
+
+  @HostListener('window:keydown.escape')
+  onEscapePress() {
+    if (this.isGlobalSearchOpen) {
+      this.closeGlobalSearch();
+      return;
+    }
+    if (this.isNavDragging) {
+      this.cancelNavDrag();
+    }
+  }
+
+  cancelNavDrag() {
+    clearTimeout(this.navHoldTimer);
+    this.cleanupNavPointerListeners();
+
+    if (this.isNavDragging) {
+      this.preventNavClick = true;
+      setTimeout(() => { this.preventNavClick = false; }, 200);
+
+      if (this.originalNavOrderBeforeDrag.length > 0) {
+        this.navButtons = [...this.originalNavOrderBeforeDrag];
+        this.cdr.detectChanges();
+      }
+
+      const buttonEls = Array.from(document.querySelectorAll('.header-nav .btn-nav-icon')) as HTMLElement[];
+      buttonEls.forEach(el => {
+        el.style.transform = '';
+        el.style.transition = '';
+        el.style.boxShadow = '';
+        el.style.borderColor = '';
+        el.style.zIndex = '';
+      });
+
+      this.isNavDragging = false;
+      this.draggedNavIndex = -1;
+      this.draggedNavId = null;
+      this.pendingDragIndex = -1;
+    }
+  }
+
+  cleanupNavPointerListeners() {
+    clearTimeout(this.navHoldTimer);
+    window.removeEventListener('pointermove', this.onWindowPointerMoveBound);
+    window.removeEventListener('pointerup', this.onWindowPointerUpBound);
+    window.removeEventListener('pointercancel', this.onWindowPointerUpBound);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  saveNavOrderPreferences() {
+    const order = this.navButtons.map(b => b.id);
+    localStorage.setItem('redcliffe_nav_order', JSON.stringify(order));
+    this.crmService.saveUserPreferences({ nav_order: order }).subscribe({
+      next: () => {
+        console.log('[Preferences] Nav order saved successfully:', order);
+      },
+      error: (err) => {
+        console.warn('[Preferences] Failed to persist nav order:', err);
+      }
+    });
+  }
+
+  applyNavOrder(savedIds: string[]) {
+    if (!Array.isArray(savedIds) || savedIds.length === 0) return;
+    const buttonMap = new Map<string, NavButtonItem>();
+    this.defaultNavButtons.forEach(b => buttonMap.set(b.id, b));
+
+    const reordered: NavButtonItem[] = [];
+    savedIds.forEach(id => {
+      const normalizedId = id === 'individuals' ? 'contacts' : id;
+      if (buttonMap.has(normalizedId)) {
+        reordered.push(buttonMap.get(normalizedId)!);
+        buttonMap.delete(normalizedId);
+      }
+    });
+
+    buttonMap.forEach(b => reordered.push(b));
+    this.navButtons = reordered;
+  }
+
+  // ==================== GLOBAL SEARCH METHODS ====================
+
+  openGlobalSearch(event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.isGlobalSearchOpen = true;
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      if (this.globalSearchInputRef?.nativeElement) {
+        this.globalSearchInputRef.nativeElement.focus();
+        this.globalSearchInputRef.nativeElement.select();
+      }
+    }, 60);
+  }
+
+  closeGlobalSearch(event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.isGlobalSearchOpen = false;
+    this.globalSearchQuery = '';
+    this.globalSearchResults = null;
+    this.isGlobalSearching = false;
+    clearTimeout(this.globalSearchDebounceTimer);
+    this.cdr.detectChanges();
+  }
+
+  clearGlobalSearch(event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.globalSearchQuery = '';
+    this.globalSearchResults = null;
+    this.isGlobalSearching = false;
+    clearTimeout(this.globalSearchDebounceTimer);
+    this.cdr.detectChanges();
+    this.globalSearchInputRef?.nativeElement?.focus();
+  }
+
+  onGlobalSearchInput(val?: string) {
+    clearTimeout(this.globalSearchDebounceTimer);
+    const q = (this.globalSearchQuery || '').trim();
+    if (!q) {
+      this.globalSearchResults = null;
+      this.isGlobalSearching = false;
+      return;
+    }
+    this.isGlobalSearching = true;
+    this.globalSearchDebounceTimer = setTimeout(() => {
+      this.crmService.globalSearch(q).subscribe({
+        next: (res) => {
+          this.globalSearchResults = res;
+          this.isGlobalSearching = false;
+        },
+        error: (err) => {
+          console.error('Global search error:', err);
+          this.isGlobalSearching = false;
+        }
+      });
+    }, 180);
+  }
+
+  onGlobalSearchKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closeGlobalSearch();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (this.globalSearchResults && this.globalSearchResults.categories?.length > 0) {
+        const firstCat = this.globalSearchResults.categories[0];
+        if (firstCat.items?.length > 0) {
+          this.selectSearchResult(firstCat.items[0]);
+        }
+      }
+    }
+  }
+
+  selectSearchResult(item: any) {
+    if (!item) return;
+    this.closeGlobalSearch();
+
+    switch (item.type) {
+      case 'account':
+        this.openAccountTabById(item.id, item.title);
+        break;
+
+      case 'contact':
+        this.openContactTabById(item.id);
+        break;
+
+      case 'carrier':
+        this.selectApp('Carriers');
+        this.carriersSearchQuery = item.title;
+        break;
+
+      case 'census': {
+        const matchContact = this.contactsList.find(c =>
+          (item.data?.employee_name && c.name?.toLowerCase() === item.data.employee_name.toLowerCase()) ||
+          (item.data?.certificate_number && c.notes?.includes(item.data.certificate_number))
+        );
+        if (matchContact) {
+          this.openContactTabById(matchContact.id);
+        } else if (item.data?.carrier) {
+          this.openCensusRosterModal(item.data.carrier);
+        }
+        break;
+      }
+
+      case 'meeting':
+        this.openMeetingTabById(item.id);
+        break;
+
+      case 'report':
+        this.selectApp('Reports');
+        const rep = this.reportsList.find(r => r.id === item.id);
+        if (rep) {
+          this.runReport(rep);
+        }
+        break;
+    }
   }
 }

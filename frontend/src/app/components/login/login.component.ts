@@ -55,6 +55,7 @@ export class LoginComponent {
           sessionStorage.setItem('auth_token', res.token);
           sessionStorage.setItem('username', res.user.username);
           sessionStorage.setItem('user_name', res.user.name);
+          sessionStorage.setItem('is_demo', res.user.is_demo ? 'true' : 'false');
           this.router.navigate(['/']);
         } else {
           this.errorMessage = 'Invalid username or password.';

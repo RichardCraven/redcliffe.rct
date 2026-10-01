@@ -27,6 +27,10 @@
   --glass-border: rgba(255, 255, 255, 0.06);
   --glass-highlight: rgba(255, 255, 255, 0.02);
   
+  --table-header-bg: #131b2e;
+  --table-header-color: #94a3b8;
+  --table-header-border: var(--glass-border);
+  
   --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 12px 24px -6px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 20px 40px -8px rgba(0, 0, 0, 0.4);
@@ -197,6 +201,10 @@ body.light-theme {
   --glass-border: rgba(15, 23, 42, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.8);
   
+  --table-header-bg: #f8fafc;
+  --table-header-color: #475569;
+  --table-header-border: #e2e8f0;
+  
   background-image: 
     radial-gradient(circle at 10% 20%, rgba(225, 29, 72, 0.03) 0%, transparent 40%),
     radial-gradient(circle at 90% 80%, rgba(37, 99, 235, 0.03) 0%, transparent 40%);
@@ -242,6 +250,30 @@ body.light-theme .btn-nav-icon.active .material-icons-round {
   color: #4f46e5;
 }
 
+body.light-theme .btn-nav-icon.is-lifted {
+  background: #ffffff !important;
+  border-color: #6366f1 !important;
+  color: #0f172a !important;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18), 0 0 20px rgba(99, 102, 241, 0.35) !important;
+}
+
+body.light-theme .btn-nav-icon.is-lifted .material-icons-round {
+  color: #4f46e5 !important;
+}
+
+body.light-theme .table-row-delete-btn {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.08);
+  color: #64748b;
+}
+
+body.light-theme .table-row-delete-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+}
+
 body.light-theme .status-indicator {
   background: rgba(15, 23, 42, 0.04);
   border-color: rgba(15, 23, 42, 0.08);
@@ -256,20 +288,97 @@ body.light-theme .account-row:hover {
   background: rgba(15, 23, 42, 0.02);
 }
 
+/* Light Theme Panel Overrides */
+body.light-theme .panel-crm-records {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+}
+
+body.light-theme .panel-import {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06) !important;
+}
+
+body.light-theme .panel-header h2 {
+  color: #0f172a !important;
+}
+
 body.light-theme .table-container {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(15, 23, 42, 0.08);
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
 }
 
-body.light-theme .accounts-table th {
-  background: #f8fafc;
-  color: #475569;
-  border-bottom: 2px solid rgba(15, 23, 42, 0.08);
+body.light-theme .accounts-table th,
+body.light-theme .crm-table th,
+body.light-theme .report-results-table th {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
 }
 
-body.light-theme .accounts-table td {
-  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
-  color: #334155;
+body.light-theme .accounts-table thead,
+body.light-theme .crm-table thead,
+body.light-theme .report-results-table thead {
+  background: #f8fafc !important;
+}
+
+body.light-theme .accounts-table th span,
+body.light-theme .accounts-table th div,
+body.light-theme .crm-table th span,
+body.light-theme .crm-table th div,
+body.light-theme .report-results-table th span,
+body.light-theme .report-results-table th div {
+  color: #475569 !important;
+}
+
+body.light-theme .btn-column-edit {
+  color: #64748b !important;
+}
+
+body.light-theme .btn-column-edit:hover {
+  color: #e11d48 !important;
+  background: rgba(225, 29, 72, 0.08) !important;
+  border-color: rgba(225, 29, 72, 0.2) !important;
+}
+
+body.light-theme .btn-column-edit .material-icons-round {
+  color: inherit !important;
+}
+
+body.light-theme .accounts-table td,
+body.light-theme .crm-table td,
+body.light-theme .report-results-table td {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+  color: #334155 !important;
+}
+
+body.light-theme .account-row:hover,
+body.light-theme .report-data-row:hover,
+body.light-theme .accounts-table tbody tr:hover,
+body.light-theme .crm-table tbody tr:hover {
+  background: rgba(15, 23, 42, 0.02) !important;
+}
+
+body.light-theme .sortable-th:hover {
+  color: #0f172a !important;
+}
+
+body.light-theme .sortable-th.active-sort {
+  color: #2563eb !important;
+}
+
+body.light-theme .client-chip {
+  background: rgba(15, 23, 42, 0.04) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  color: #334155 !important;
+}
+
+body.light-theme .client-chip:hover {
+  background: rgba(15, 23, 42, 0.08) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
 }
 
 body.light-theme .location-badge {
@@ -291,18 +400,47 @@ body.light-theme .name-text {
 }
 
 body.light-theme .settings-section-card {
-  background: rgba(15, 23, 42, 0.01) !important;
-  border-color: rgba(15, 23, 42, 0.05) !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+}
+
+body.light-theme .settings-section-card label {
+  color: #475569 !important;
 }
 
 body.light-theme .settings-section-card input {
   background: #ffffff !important;
-  border-color: rgba(15, 23, 42, 0.12) !important;
+  border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
 }
 
 body.light-theme .settings-section-card input:focus {
   border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+}
+
+body.light-theme .settings-section-card div[style*="background: rgba(255, 255, 255"] {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
+}
+
+body.light-theme .settings-section-card span[style*="color: #cbd5e1"] {
+  color: #0f172a !important;
+}
+
+body.light-theme .settings-section-card span[style*="color: #f8fafc"] {
+  color: #0f172a !important;
+}
+
+body.light-theme .settings-section-card div[style*="background: rgba(99, 102, 241"] {
+  background: rgba(99, 102, 241, 0.08) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+body.light-theme .settings-section-card div[style*="background: rgba(99, 102, 241"] div {
+  color: #334155 !important;
 }
 
 body.light-theme .modal-card {
@@ -473,4 +611,60 @@ body.light-theme .activity-input:focus,
 body.light-theme .activity-textarea:focus {
   background: #ffffff !important;
   border-color: var(--color-secondary) !important;
+}
+
+/* ==========================================================================
+   Square Feel Mode (App Customization - Square vs Rounded Corners)
+   ========================================================================== */
+
+body.feel-square {
+  --border-radius-sm: 0px !important;
+  --border-radius-md: 0px !important;
+  --border-radius-lg: 0px !important;
+}
+
+/* Force square corners across all inputs, containers, cards, tables, buttons, and popups */
+body.feel-square *:not(.spinner):not(.loading-spinner):not(.spinner-large):not(.status-dot),
+body.feel-square *:not(.spinner):not(.loading-spinner):not(.spinner-large):not(.status-dot)::before,
+body.feel-square *:not(.spinner):not(.loading-spinner):not(.spinner-large):not(.status-dot)::after {
+  border-radius: 0px !important;
+  border-top-left-radius: 0px !important;
+  border-top-right-radius: 0px !important;
+  border-bottom-left-radius: 0px !important;
+  border-bottom-right-radius: 0px !important;
+}
+
+/* Explicit square feel overrides for all interactive elements and containers */
+body.feel-square input,
+body.feel-square textarea,
+body.feel-square select,
+body.feel-square button,
+body.feel-square .btn,
+body.feel-square .btn-primary,
+body.feel-square .btn-secondary,
+body.feel-square .btn-icon,
+body.feel-square .btn-nav-icon,
+body.feel-square .glass-panel,
+body.feel-square .settings-section-card,
+body.feel-square .table-container,
+body.feel-square .modal-card,
+body.feel-square .accounts-tab-bar,
+body.feel-square .account-tab-wrapper,
+body.feel-square .account-tab-btn,
+body.feel-square .status-badge,
+body.feel-square .role-badge,
+body.feel-square .coverage-badge,
+body.feel-square .industry-badge,
+body.feel-square .location-badge,
+body.feel-square .role-badge-borderless,
+body.feel-square .activity-input,
+body.feel-square .activity-textarea,
+body.feel-square .meetings-search-input,
+body.feel-square .theme-toggle-slider,
+body.feel-square .theme-toggle-knob,
+body.feel-square .column-picker-modal,
+body.feel-square .census-roster-container,
+body.feel-square .report-viewer-dialog,
+body.feel-square .detail-drawer {
+  border-radius: 0px !important;
 }

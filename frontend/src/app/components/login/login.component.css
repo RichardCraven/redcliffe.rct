@@ -155,6 +155,12 @@
   margin-bottom: 8px;
 }
 
+.forgot-password-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 .label-row label {
   margin-bottom: 0;
 }

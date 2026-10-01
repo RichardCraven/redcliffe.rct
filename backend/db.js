@@ -154,6 +154,90 @@ function deleteIndividual(id) {
   return deleted;
 }
 
+function saveCensusRecords(employees, carrier = 'ManuLife', policyNumber = '') {
+  const db = loadDb();
+  if (!db.individuals) db.individuals = [];
+  if (!db.census_records) db.census_records = [];
+
+  const now = new Date().toISOString();
+  let inserted = 0;
+  let updated = 0;
+
+  let matchedAccountName = `${carrier} (Policy #${policyNumber || 'Group'})`;
+  let matchedAccountId = '';
+
+  const carLower = carrier.toLowerCase();
+  if (carLower.includes('manulife')) {
+    matchedAccountName = 'Mulgrave School';
+  } else if (carLower.includes('canadalife')) {
+    matchedAccountName = 'Culture Craze Retail Corp.';
+  } else if (carLower.includes('groupsource')) {
+    matchedAccountName = 'Aberdeen Hall Preparatory School';
+  }
+
+  for (const emp of employees) {
+    const certNum = emp.certificateNumber || '';
+    const individualId = `ind-census-${carrier.toLowerCase()}-${certNum}`;
+
+    const benefitsSummary = (emp.benefits || [])
+      .map(b => `${b.benefitCode}${b.coverageType ? ' (' + b.coverageType + ')' : ''}${b.coverageAmount ? ' $' + Number(b.coverageAmount).toLocaleString() : ''}`)
+      .join(', ');
+
+    const dependentsSummary = (emp.dependents || [])
+      .map(d => `${d.dependentName} [${d.relationship || d.relationshipCode}]`)
+      .join(', ');
+
+    const notesParts = [
+      `[CENSUS: ${carrier.toUpperCase()}]`,
+      `Cert: #${certNum}`,
+      `Policy: #${emp.policyNumber || policyNumber || 'N/A'}`,
+      emp.division ? `Div: ${emp.division}` : null,
+      emp.class ? `Class: ${emp.class}` : null,
+      emp.salary ? `Salary: $${Number(emp.salary).toLocaleString()} (${emp.salaryMode || 'A'})` : null,
+      emp.hireDate ? `Hired: ${emp.hireDate}` : null,
+      emp.birthDate ? `DOB: ${emp.birthDate}` : null,
+      emp.address ? `Address: ${emp.address}, ${emp.city || ''} ${emp.province || ''}` : null,
+      benefitsSummary ? `Benefits: ${benefitsSummary}` : null,
+      dependentsSummary ? `Dependents (${emp.dependents.length}): ${dependentsSummary}` : null
+    ].filter(Boolean).join(' | ');
+
+    const phone = emp.phone || '';
+    const status = emp.status === 'Terminated' ? 'Inactive' : 'Active';
+
+    const existingIndex = db.individuals.findIndex(i => i.id === individualId || (i.name === emp.fullName && (i.notes && i.notes.includes(certNum))));
+    if (existingIndex >= 0) {
+      updated++;
+      db.individuals[existingIndex] = {
+        ...db.individuals[existingIndex],
+        account_name: db.individuals[existingIndex].account_name || matchedAccountName,
+        role: 'Plan Member',
+        status: status,
+        phone: phone,
+        notes: notesParts,
+        updated_at: now
+      };
+    } else {
+      inserted++;
+      db.individuals.push({
+        id: individualId,
+        account_id: matchedAccountId,
+        account_name: matchedAccountName,
+        name: emp.fullName,
+        email: '',
+        phone: phone,
+        role: 'Plan Member',
+        status: status,
+        notes: notesParts,
+        created_at: now,
+        updated_at: now
+      });
+    }
+  }
+
+  saveDb();
+  return { insertedIndividuals: inserted, updatedIndividuals: updated, matchedAccountName };
+}
+
 // ==================== ACCOUNT CUSTOM FIELDS OPERATIONS ====================
 
 function getAccountCustomFields(accountId) {
@@ -227,8 +311,19 @@ function saveUserPreferences(username, preferences) {
   return db.user_preferences[username];
 }
 
+const getAllContacts = getAllIndividuals;
+const getContactById = getIndividualById;
+const createContact = createIndividual;
+const updateContact = updateIndividual;
+const deleteContact = deleteIndividual;
+
 module.exports = {
   loadDb,
+  getAllContacts,
+  getContactById,
+  createContact,
+  updateContact,
+  deleteContact,
   getAllIndividuals,
   getIndividualById,
   createIndividual,
@@ -237,6 +332,7 @@ module.exports = {
   getAccountCustomFields,
   updateAccountCustomFields,
   getUserPreferences,
-  saveUserPreferences
+  saveUserPreferences,
+  saveCensusRecords
 };
 

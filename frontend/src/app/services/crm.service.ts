@@ -2,13 +2,20 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { Observable, Subject, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
+import { CensusImportResult, CarrierCensusFormatSpec, CensusEmployee } from '../models/census.model';
+export * from '../models/census.model';
 
 export const sessionInterceptor: HttpInterceptorFn = (req, next) => {
   const crmService = inject(CrmService);
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      // If unauthorized (401), and not the login endpoint
-      if (error.status === 401 && !req.url.includes('/api/login')) {
+      // Only trigger session timeout if the user is currently logged in,
+      // and the 401 is for a core API endpoint (exclude login, password reset, and external integrations like Outlook)
+      const isExempt = req.url.includes('/api/login') ||
+                       req.url.includes('/api/password/reset') ||
+                       req.url.includes('/outlook');
+
+      if (error.status === 401 && crmService.isLoggedIn() && !isExempt) {
         crmService.sessionTimeout$.next();
       }
       return throwError(() => error);
@@ -34,7 +41,7 @@ export interface ImportResults {
   errors: Array<{ name: string; error: string }>;
 }
 
-export interface IndividualBean {
+export interface ContactBean {
   id: string;
   name: string;
   email?: string;
@@ -48,6 +55,8 @@ export interface IndividualBean {
   updated_at?: string;
 }
 
+export type IndividualBean = ContactBean;
+
 export interface GroupBenefitsData {
   renewal_date?: string;
   carrier_tpa?: string;
@@ -58,7 +67,8 @@ export interface PlanAdminData {
   names: string[];
   emails: string[];
   phones: string[];
-  individuals: IndividualBean[];
+  contacts?: ContactBean[];
+  individuals: ContactBean[];
 }
 
 export interface AccountBean {
@@ -132,6 +142,16 @@ export interface ReportExecutionResult {
   records: Array<Record<string, string>>;
 }
 
+export interface Carrier {
+  id: string;
+  carrier: string;
+  description: string;
+  clientIdentifier: string;
+  clients: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -156,8 +176,8 @@ export class CrmService {
     };
   }
 
-  login(username: string, password: string): Observable<{ success: boolean; token: string; user: { username: string; name: string } }> {
-    return this.http.post<{ success: boolean; token: string; user: { username: string; name: string } }>(`${this.apiUrl}/login`, { username, password });
+  login(username: string, password: string): Observable<{ success: boolean; token: string; user: { username: string; name: string; is_demo?: boolean } }> {
+    return this.http.post<{ success: boolean; token: string; user: { username: string; name: string; is_demo?: boolean } }>(`${this.apiUrl}/login`, { username, password });
   }
 
   logout(): Observable<{ success: boolean }> {
@@ -191,8 +211,9 @@ export class CrmService {
     return this.http.post<{ status: string; message: string }>(`${this.apiUrl}/reauth`, {}, this.getHeaders());
   }
 
-  getRecentAccounts(limit: number = 10): Observable<{ list: AccountBean[] }> {
-    return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}`, this.getHeaders());
+  getRecentAccounts(limit: number = 10, search?: string): Observable<{ list: AccountBean[] }> {
+    const q = search ? `&search=${encodeURIComponent(search)}` : '';
+    return this.http.get<{ list: AccountBean[] }>(`${this.apiUrl}/accounts?limit=${limit}${q}`, this.getHeaders());
   }
 
   getAccount(id: string): Observable<AccountBean> {
@@ -291,7 +312,7 @@ export class CrmService {
     return this.http.patch<{ success: boolean; data: any }>(`${this.apiUrl}/accounts/${id}/custom-fields`, customData, this.getHeaders());
   }
 
-  getIndividuals(accountId?: string, search?: string): Observable<{ list: IndividualBean[] }> {
+  getContacts(accountId?: string, search?: string): Observable<{ list: ContactBean[] }> {
     let params = '';
     if (accountId && search) {
       params = `?accountId=${encodeURIComponent(accountId)}&search=${encodeURIComponent(search)}`;
@@ -300,23 +321,44 @@ export class CrmService {
     } else if (search) {
       params = `?search=${encodeURIComponent(search)}`;
     }
-    return this.http.get<{ list: IndividualBean[] }>(`${this.apiUrl}/individuals${params}`, this.getHeaders());
+    return this.http.get<{ list: ContactBean[] }>(`${this.apiUrl}/contacts${params}`, this.getHeaders());
   }
 
-  getIndividual(id: string): Observable<IndividualBean> {
-    return this.http.get<IndividualBean>(`${this.apiUrl}/individuals/${id}`, this.getHeaders());
+  getContact(id: string): Observable<ContactBean> {
+    return this.http.get<ContactBean>(`${this.apiUrl}/contacts/${id}`, this.getHeaders());
   }
 
-  createIndividual(individualData: Partial<IndividualBean>): Observable<IndividualBean> {
-    return this.http.post<IndividualBean>(`${this.apiUrl}/individuals`, individualData, this.getHeaders());
+  createContact(contactData: Partial<ContactBean>): Observable<ContactBean> {
+    return this.http.post<ContactBean>(`${this.apiUrl}/contacts`, contactData, this.getHeaders());
   }
 
-  updateIndividual(id: string, individualData: Partial<IndividualBean>): Observable<IndividualBean> {
-    return this.http.patch<IndividualBean>(`${this.apiUrl}/individuals/${id}`, individualData, this.getHeaders());
+  updateContact(id: string, contactData: Partial<ContactBean>): Observable<ContactBean> {
+    return this.http.patch<ContactBean>(`${this.apiUrl}/contacts/${id}`, contactData, this.getHeaders());
+  }
+
+  deleteContact(id: string): Observable<{ success: boolean }> {
+    return this.http.delete<{ success: boolean }>(`${this.apiUrl}/contacts/${id}`, this.getHeaders());
+  }
+
+  // Backward compatibility aliases
+  getIndividuals(accountId?: string, search?: string): Observable<{ list: ContactBean[] }> {
+    return this.getContacts(accountId, search);
+  }
+
+  getIndividual(id: string): Observable<ContactBean> {
+    return this.getContact(id);
+  }
+
+  createIndividual(individualData: Partial<ContactBean>): Observable<ContactBean> {
+    return this.createContact(individualData);
+  }
+
+  updateIndividual(id: string, individualData: Partial<ContactBean>): Observable<ContactBean> {
+    return this.updateContact(id, individualData);
   }
 
   deleteIndividual(id: string): Observable<{ success: boolean }> {
-    return this.http.delete<{ success: boolean }>(`${this.apiUrl}/individuals/${id}`, this.getHeaders());
+    return this.deleteContact(id);
   }
 
   getUserPreferences(): Observable<{ success: boolean; preferences: any }> {
@@ -335,8 +377,72 @@ export class CrmService {
     return this.http.post<{ success: boolean; mode: string }>(`${this.apiUrl}/backend/config`, { mode }, this.getHeaders());
   }
 
-  syncSpiceToSqlite(): Observable<{ success: boolean; accounts: number; meetings: number; users: number; reports: number }> {
-    return this.http.post<{ success: boolean; accounts: number; meetings: number; users: number; reports: number }>(`${this.apiUrl}/backend/sync-spice`, {}, this.getHeaders());
+  syncSpiceToSqlite(): Observable<{
+    success: boolean;
+    accounts: number;
+    contacts?: number;
+    individuals?: number;
+    meetings: number;
+    users: number;
+    reports: number;
+    carriers?: number;
+    censusRecords?: number;
+  }> {
+    return this.http.post<any>(`${this.apiUrl}/backend/sync-spice`, {}, this.getHeaders());
+  }
+
+  getCarriers(search: string = ''): Observable<{ total: number; list: Carrier[] }> {
+    const q = search ? `?search=${encodeURIComponent(search)}` : '';
+    return this.http.get<{ total: number; list: Carrier[] }>(`${this.apiUrl}/carriers${q}`, this.getHeaders());
+  }
+
+  getCarrier(id: string): Observable<Carrier> {
+    return this.http.get<Carrier>(`${this.apiUrl}/carriers/${id}`, this.getHeaders());
+  }
+
+  createCarrier(carrierData: Partial<Carrier>): Observable<Carrier> {
+    return this.http.post<Carrier>(`${this.apiUrl}/carriers`, carrierData, this.getHeaders());
+  }
+
+  updateCarrier(id: string, carrierData: Partial<Carrier>): Observable<Carrier> {
+    return this.http.put<Carrier>(`${this.apiUrl}/carriers/${id}`, carrierData, this.getHeaders());
+  }
+
+  deleteCarrier(id: string): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/carriers/${id}`, this.getHeaders());
+  }
+
+  importCensusData(files: File[], carrier: string = 'ManuLife'): Observable<CensusImportResult> {
+    const formData = new FormData();
+    formData.append('carrier', carrier);
+    for (const file of files) {
+      formData.append('files', file, file.name);
+    }
+    return this.http.post<CensusImportResult>(`${this.apiUrl}/census/import`, formData, this.getHeaders());
+  }
+
+  getCensusFormats(): Observable<{ list: CarrierCensusFormatSpec[] }> {
+    return this.http.get<{ list: CarrierCensusFormatSpec[] }>(`${this.apiUrl}/census/carriers`, this.getHeaders());
+  }
+
+  getCensusRecords(carrier?: string, search?: string): Observable<{ total: number; list: any[] }> {
+    let q = '';
+    const params: string[] = [];
+    if (carrier) params.push(`carrier=${encodeURIComponent(carrier)}`);
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
+    if (params.length > 0) q = '?' + params.join('&');
+    return this.http.get<{ total: number; list: any[] }>(`${this.apiUrl}/census/records${q}`, this.getHeaders());
+  }
+
+  globalSearch(query: string, limit: number = 8): Observable<{ query: string; total: number; categories: any[] }> {
+    return this.http.get<{ query: string; total: number; categories: any[] }>(
+      `${this.apiUrl}/global-search?q=${encodeURIComponent(query)}&limit=${limit}`,
+      this.getHeaders()
+    );
+  }
+
+  syncUsers(): Observable<{ success: boolean; count: number; list: any[] }> {
+    return this.http.post<{ success: boolean; count: number; list: any[] }>(`${this.apiUrl}/users/sync`, {}, this.getHeaders());
   }
 }
 

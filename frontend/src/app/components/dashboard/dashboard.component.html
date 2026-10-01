@@ -17,62 +17,109 @@
       <button (click)="toggleAppLauncher()" class="btn-apps" title="App Launcher">
         <span class="material-icons-round">apps</span>
       </button>
-      <img src="assets/redcliffe_logo.png" alt="Redcliffe Logo" class="brand-logo-img">
+      <img src="assets/redcliffe_logo.png" [alt]="isDemoUser ? 'Demo Financial Logo' : 'Redcliffe Logo'" class="brand-logo-img">
       <div class="brand-text">
-        <h1 class="gradient-text">Redcliffe Financial</h1>
+        <h1 class="gradient-text">{{ isDemoUser ? 'Demo Financial LLC' : 'Redcliffe Financial' }}</h1>
       </div>
     </div>
 
     <!-- Header Navigation Buttons -->
-    <div class="header-nav" style="display: flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 24px;">
-      <button 
-        (click)="selectApp('Accounts')" 
-        class="btn-nav-icon" 
-        [class.active]="activeView === 'accounts'" 
-        title="Accounts"
-      >
-        <span class="material-icons-round">corporate_fare</span>
-        <span class="btn-nav-text">Accounts</span>
-      </button>
-      <button 
-        (click)="selectApp('Meetings')" 
-        class="btn-nav-icon" 
-        [class.active]="activeView === 'meetings'" 
-        title="Meetings"
-      >
-        <span class="material-icons-round">today</span>
-        <span class="btn-nav-text">Meetings</span>
-      </button>
-      <button 
-        (click)="selectApp('Individuals')" 
-        class="btn-nav-icon" 
-        [class.active]="activeView === 'individuals'" 
-        title="Individuals"
-      >
-        <span class="material-icons-round">badge</span>
-        <span class="btn-nav-text">Individuals</span>
-      </button>
-      <button 
-        (click)="selectApp('Users')" 
-        class="btn-nav-icon" 
-        [class.active]="activeView === 'users'" 
-        title="Users"
-      >
-        <span class="material-icons-round">manage_accounts</span>
-        <span class="btn-nav-text">Users</span>
-      </button>
-      <button 
-        (click)="selectApp('Reports')" 
-        class="btn-nav-icon" 
-        [class.active]="activeView === 'reports'" 
-        title="Reports"
-      >
-        <span class="material-icons-round">analytics</span>
-        <span class="btn-nav-text">Reports</span>
-      </button>
+    <div class="header-nav" style="display: flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 16px;">
+      <ng-container *ngFor="let btn of navButtons; let i = index; trackBy: trackByNavId">
+        <!-- Regular Button (or Collapsed Search Button) -->
+        <button 
+          *ngIf="btn.id !== 'search' || !isGlobalSearchOpen"
+          [attr.data-nav-id]="btn.id"
+          (pointerdown)="onNavPointerDown($event, i, btn)"
+          (click)="onNavButtonClick(btn, $event)"
+          class="btn-nav-icon" 
+          [class.btn-nav-search-only]="btn.id === 'search'"
+          [class.active]="isNavButtonActive(btn.id)"
+          [class.is-lifted]="isNavDragging && draggedNavIndex === i"
+          [title]="btn.label"
+        >
+          <span class="material-icons-round">{{ btn.icon }}</span>
+          <span *ngIf="btn.id !== 'search'" class="btn-nav-text">{{ btn.label }}</span>
+        </button>
+
+        <!-- Expanded Global Search Container when Search Button is Clicked -->
+        <div 
+          *ngIf="btn.id === 'search' && isGlobalSearchOpen" 
+          class="global-search-container animate-fade-in"
+          [attr.data-nav-id]="btn.id"
+          (click)="$event.stopPropagation()"
+        >
+          <div class="global-search-bar">
+            <span class="material-icons-round global-search-icon">search</span>
+            <input 
+              #globalSearchInput
+              type="text" 
+              [(ngModel)]="globalSearchQuery" 
+              (ngModelChange)="onGlobalSearchInput($event)"
+              (keydown)="onGlobalSearchKeydown($event)"
+              placeholder="Global Search" 
+              class="global-search-input"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button *ngIf="globalSearchQuery" (click)="clearGlobalSearch($event)" class="btn-search-clear" title="Clear search">
+              <span class="material-icons-round">close</span>
+            </button>
+            <button (click)="closeGlobalSearch($event)" class="btn-search-close" title="Close search (Esc)">
+              <span class="material-icons-round">keyboard_arrow_left</span>
+            </button>
+          </div>
+
+          <!-- Dropdown Results Palette -->
+          <div *ngIf="isGlobalSearchOpen && (globalSearchQuery.trim().length > 0 || isGlobalSearching)" class="global-search-dropdown animate-fade-in">
+            <!-- Searching Loader -->
+            <div *ngIf="isGlobalSearching" class="search-loading-state">
+              <span class="material-icons-round spinning" style="font-size: 18px; color: #38bdf8;">sync</span>
+              <span>Searching across database...</span>
+            </div>
+
+            <!-- Empty State -->
+            <div *ngIf="!isGlobalSearching && (!globalSearchResults || globalSearchResults.total === 0)" class="search-empty-state">
+              <span class="material-icons-round" style="font-size: 26px; color: #64748b;">search_off</span>
+              <p style="margin: 6px 0 0 0; font-size: 13px; font-weight: 600; color: #f8fafc;">No matches found</p>
+              <p style="margin: 2px 0 0 0; font-size: 11px; color: #94a3b8;">No results found for "{{ globalSearchQuery }}" across accounts, contacts, carriers, policies, or reports.</p>
+            </div>
+
+            <!-- Category Groups -->
+            <ng-container *ngIf="!isGlobalSearching && globalSearchResults && globalSearchResults.total > 0">
+              <div *ngFor="let cat of globalSearchResults.categories" class="search-category-group">
+                <div class="search-category-header">
+                  <span>{{ cat.label }}</span>
+                  <span class="category-count-pill">{{ cat.count }}</span>
+                </div>
+                <div class="search-category-items">
+                  <div 
+                    *ngFor="let item of cat.items" 
+                    (click)="selectSearchResult(item)" 
+                    class="search-result-item"
+                  >
+                    <div class="result-icon-badge" [ngClass]="'badge-' + item.type">
+                      <span class="material-icons-round">{{ item.icon }}</span>
+                    </div>
+                    <div class="result-text-content">
+                      <div class="result-title">{{ item.title }}</div>
+                      <div class="result-subtitle">{{ item.subtitle }}</div>
+                    </div>
+                    <div class="result-badge-wrap">
+                      <span class="result-type-tag" [ngClass]="'tag-' + item.type">{{ item.badge }}</span>
+                      <span class="material-icons-round result-arrow">arrow_forward</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+        </div>
+      </ng-container>
     </div>
     
-    <div class="status-indicator">
+    <!-- Full Status & Profile Controls (Shown when Global Search is Closed) -->
+    <div *ngIf="!isGlobalSearchOpen" class="status-indicator animate-fade-in">
       <div class="status-dot" [ngClass]="{
         'status-connected': connectionStatus === 'connected',
         'status-checking': connectionStatus === 'checking',
@@ -89,7 +136,7 @@
         <span class="material-icons-round">refresh</span>
       </button>
       <!-- User Profile Avatar/Placeholder -->
-      <div (click)="selectApp('Settings')" title="User Profile Settings" style="margin-left: 16px; display: flex; align-items: center;">
+      <div (click)="selectApp('Settings')" title="User Profile Settings" style="margin-left: 16px; display: flex; align-items: center; cursor: pointer;">
         <div *ngIf="getUserInitials(); else placeholderAvatar" class="header-profile-avatar">
           {{ getUserInitials() }}
         </div>
@@ -102,10 +149,29 @@
         <span class="material-icons-round">logout</span>
       </button>
     </div>
+
+    <!-- Collapsed Multi-Item Section Icon (Shown when Global Search is Expanded) -->
+    <button 
+      *ngIf="isGlobalSearchOpen" 
+      (click)="closeGlobalSearch($event)" 
+      class="status-indicator status-indicator-collapsed animate-fade-in" 
+      title="Click to restore status, profile & logout"
+      type="button"
+    >
+      <div class="status-dot" [ngClass]="{
+        'status-connected': connectionStatus === 'connected',
+        'status-checking': connectionStatus === 'checking',
+        'status-error': connectionStatus === 'error'
+      }"></div>
+      <div *ngIf="getUserInitials()" class="header-profile-avatar-compact">
+        {{ getUserInitials() }}
+      </div>
+      <span class="material-icons-round collapsed-multi-icon">more_horiz</span>
+    </button>
   </header>
 
   <!-- Dashboard Content Grid -->
-  <main class="dashboard-grid" [class.collapsed-sidebar]="isImportPanelCollapsed && activeView === 'accounts' && currentRole === 'Admin'" [class.sales-view]="currentRole === 'Sales' || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings' || activeView === 'individuals'">
+  <main class="dashboard-grid" [class.collapsed-sidebar]="(activeView === 'accounts' && isImportPanelCollapsed && currentRole === 'Admin') || ((activeView === 'contacts' || activeView === 'individuals') && (isContactsImportCollapsed || isIndividualsImportCollapsed)) || (activeView === 'carriers' && isCarriersImportCollapsed)" [class.sales-view]="(currentRole === 'Sales' && activeView === 'accounts') || activeView === 'meetings' || activeView === 'users' || activeView === 'reports' || activeView === 'settings'">
     <!-- Left Panel: CSV Import Actions -->
     <section *ngIf="currentRole === 'Admin' && activeView === 'accounts'" class="panel-import glass-panel glow-effect" [class.collapsed]="isImportPanelCollapsed">
       <!-- Expanded State Content -->
@@ -245,7 +311,7 @@
             [class.active]="activeAccountTabId === tab.id"
           >
             <span class="material-icons-round" style="font-size: 16px;">
-              {{ tab.type === 'meeting' ? 'calendar_month' : (tab.type === 'individual' ? 'badge' : 'business') }}
+              {{ tab.type === 'meeting' ? 'calendar_month' : (tab.type === 'contact' || tab.type === 'individual' ? 'badge' : 'business') }}
             </span>
             {{ tab.name }}
           </button>
@@ -368,7 +434,7 @@
                   <span>{{ acc.num_employees || acc.group_benefits?.num_employees || '—' }}</span>
                 </td>
                 <td *ngIf="isColumnVisible('description')" style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  <span [title]="acc.description || ''">{{ acc.description || '—' }}</span>
+                  <span [title]="getAccountDescription(acc)">{{ getAccountDescription(acc) || '—' }}</span>
                 </td>
                 <td style="text-align: right; padding-right: 14px;">
                   <button *ngIf="currentRole === 'Admin'" class="delete-btn" (click)="confirmDelete(acc.id, acc.name)" title="Delete Client from CRM">
@@ -503,7 +569,7 @@
                             </td>
                             <td>
                               <span class="info-value font-mono" style="font-size: 12px; opacity: 0.85;">
-                                {{ tab.meeting.isOutlook ? 'outlook-organizer@redcliffe.rct' : 'administrator@spicecrm.pfcd.ca' }}
+                                {{ tab.meeting.isOutlook ? (isDemoUser ? 'outlook-organizer@demofinancial.llc' : 'outlook-organizer@redcliffe.rct') : (isDemoUser ? 'administrator@demofinancial.llc' : 'administrator@spicecrm.pfcd.ca') }}
                               </span>
                             </td>
                           </tr>
@@ -629,10 +695,10 @@
                       </div>
                     </div>
 
-                    <div class="info-item full-width" *ngIf="tab.account.description">
+                    <div class="info-item full-width" *ngIf="getAccountDescription(tab.account)">
                       <span class="info-label">Description</span>
                       <div class="info-description-box">
-                        {{ tab.account.description }}
+                        {{ getAccountDescription(tab.account) }}
                       </div>
                     </div>
                   </div>
@@ -653,7 +719,7 @@
                     <!-- Add Plan Administrator Form (Collapsible) -->
                     <div *ngIf="tab.showAddAdminModal" class="glass-panel" style="margin-bottom: 16px; padding: 16px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03);">
                       <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
-                        New Plan Administrator (Saved to Individuals Database)
+                        New Plan Administrator (Saved to Contacts Database)
                       </div>
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                         <div>
@@ -688,7 +754,7 @@
                       <div style="display: flex; flex-direction: column; gap: 6px;">
                         <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #38bdf8; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                           <span class="material-icons-round" style="font-size: 13px;">person</span>
-                          Names (Click to view Individual)
+                          Names (Click to view Contact)
                         </span>
                         <div *ngIf="!tab.account.plan_admin?.names || tab.account.plan_admin.names.length === 0" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">
                           No administrators listed
@@ -697,10 +763,10 @@
                           <li *ngFor="let name of tab.account.plan_admin.names; let i = index">
                             <a 
                               href="javascript:void(0)"
-                              (click)="openIndividualTab(tab.account.plan_admin.individuals[i])" 
+                              (click)="openContactTab((tab.account.plan_admin.contacts && tab.account.plan_admin.contacts[i]) || (tab.account.plan_admin.individuals && tab.account.plan_admin.individuals[i]))" 
                               class="client-detail-link" 
                               style="font-size: 12px; font-weight: 600; color: #38bdf8; display: inline-flex; align-items: center; gap: 4px;"
-                              title="Open individual page for {{ name }}"
+                              title="Open contact page for {{ name }}"
                             >
                               <span class="material-icons-round" style="font-size: 13px;">open_in_new</span>
                               {{ name }}
@@ -747,12 +813,12 @@
                     </div>
 
                     <!-- Administrator Cards Row -->
-                    <div *ngIf="tab.account.plan_admin?.individuals && tab.account.plan_admin.individuals.length > 0" style="display: flex; flex-direction: column; gap: 8px;">
-                      <div *ngFor="let ind of tab.account.plan_admin.individuals" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(15, 23, 42, 0.3); border: 1px solid var(--glass-border); border-radius: 6px;">
+                    <div *ngIf="(tab.account.plan_admin?.contacts && tab.account.plan_admin.contacts.length > 0) || (tab.account.plan_admin?.individuals && tab.account.plan_admin.individuals.length > 0)" style="display: flex; flex-direction: column; gap: 8px;">
+                      <div *ngFor="let ind of (tab.account.plan_admin.contacts || tab.account.plan_admin.individuals)" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(15, 23, 42, 0.3); border: 1px solid var(--glass-border); border-radius: 6px;">
                         <div style="display: flex; align-items: center; gap: 10px;">
                           <span class="material-icons-round" style="padding: 6px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 18px;">badge</span>
                           <div>
-                            <a href="javascript:void(0)" (click)="openIndividualTab(ind)" class="client-detail-link" style="font-weight: 600; font-size: 13px; color: #f8fafc; text-decoration: none;">
+                            <a href="javascript:void(0)" (click)="openContactTab(ind)" class="client-detail-link" style="font-weight: 600; font-size: 13px; color: #f8fafc; text-decoration: none;">
                               {{ ind.name }}
                             </a>
                             <div style="font-size: 11px; color: var(--color-text-muted); display: flex; gap: 12px; margin-top: 2px;">
@@ -762,9 +828,9 @@
                             </div>
                           </div>
                         </div>
-                        <button (click)="openIndividualTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                        <button (click)="openContactTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: flex; align-items: center; gap: 4px;">
                           <span class="material-icons-round" style="font-size: 13px;">open_in_new</span>
-                          View Individual Page
+                          View Contact Page
                         </button>
                       </div>
                     </div>
@@ -996,17 +1062,17 @@
             </div>
             </ng-container>
 
-            <!-- CASE C: INDIVIDUAL WORKSPACE DETAILS -->
-            <ng-container *ngIf="tab.type === 'individual'">
-              <!-- Individual Details Header Card -->
+            <!-- CASE C: CONTACT WORKSPACE DETAILS -->
+            <ng-container *ngIf="tab.type === 'contact' || tab.type === 'individual'">
+              <!-- Contact Details Header Card -->
               <div class="account-detail-header-card">
                 <div class="header-avatar" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
                   <span class="material-icons-round">badge</span>
                 </div>
                 <div class="header-info">
-                  <span class="header-type-label" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">INDIVIDUAL PROFILE</span>
-                  <h2 class="header-title">{{ tab.individual.name }}</h2>
-                  <span class="header-subtitle">{{ tab.individual.role || 'Plan Administrator' }}</span>
+                  <span class="header-type-label" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">CONTACT PROFILE</span>
+                  <h2 class="header-title">{{ (tab.contact || tab.individual).name }}</h2>
+                  <span class="header-subtitle">{{ (tab.contact || tab.individual).role || 'Contact' }}</span>
                 </div>
               </div>
 
@@ -1017,32 +1083,32 @@
                   <div class="sub-tab-content">
                     <div class="info-group">
                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">
-                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary);">Individual Information</h3>
-                        <span class="status-badge" [ngClass]="{'status-held': tab.individual.status === 'Active', 'status-notheld': tab.individual.status !== 'Active'}">
-                          {{ tab.individual.status || 'Active' }}
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: var(--color-text-primary);">Contact Information</h3>
+                        <span class="status-badge" [ngClass]="{'status-held': (tab.contact || tab.individual).status === 'Active', 'status-notheld': (tab.contact || tab.individual).status !== 'Active'}">
+                          {{ (tab.contact || tab.individual).status || 'Active' }}
                         </span>
                       </div>
 
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Full Name *</label>
-                          <input type="text" [(ngModel)]="tab.individual.name" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                          <input type="text" [(ngModel)]="(tab.contact || tab.individual).name" class="activity-input" style="width: 100%; box-sizing: border-box;">
                         </div>
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Role / Title</label>
-                          <input type="text" [(ngModel)]="tab.individual.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                          <input type="text" [(ngModel)]="(tab.contact || tab.individual).role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
                         </div>
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Email Address</label>
-                          <input type="email" [(ngModel)]="tab.individual.email" placeholder="admin@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                          <input type="email" [(ngModel)]="(tab.contact || tab.individual).email" placeholder="admin@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
                         </div>
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Phone Number</label>
-                          <input type="tel" [(ngModel)]="tab.individual.phone" placeholder="(604) 555-0100" class="activity-input" style="width: 100%; box-sizing: border-box;">
+                          <input type="tel" [(ngModel)]="(tab.contact || tab.individual).phone" placeholder="(604) 555-0100" class="activity-input" style="width: 100%; box-sizing: border-box;">
                         </div>
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
-                          <select [(ngModel)]="tab.individual.status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.6); color: #fff;">
+                          <select [(ngModel)]="(tab.contact || tab.individual).status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.6); color: #fff;">
                             <option value="Active">Active</option>
                             <option value="Inactive">Inactive</option>
                           </select>
@@ -1050,26 +1116,210 @@
                         <div>
                           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Associated Account</label>
                           <div class="associated-account-box">
-                            <a *ngIf="tab.individual.account_id || tab.individual.account_name" href="javascript:void(0)" (click)="openAccountTabById(tab.individual.account_id, tab.individual.account_name)" class="client-detail-link associated-account-link" title="Open account details">
+                            <a *ngIf="(tab.contact || tab.individual).account_id || (tab.contact || tab.individual).account_name" href="javascript:void(0)" (click)="openAccountTabById((tab.contact || tab.individual).account_id, (tab.contact || tab.individual).account_name)" class="client-detail-link associated-account-link" title="Open account details">
                               <span class="material-icons-round">business</span>
-                              <span>{{ tab.individual.account_name || 'View Account' }}</span>
+                              <span>{{ (tab.contact || tab.individual).account_name || 'View Account' }}</span>
                             </a>
-                            <span *ngIf="!tab.individual.account_id && !tab.individual.account_name" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">Not linked to account</span>
+                            <span *ngIf="!(tab.contact || tab.individual).account_id && !(tab.contact || tab.individual).account_name" style="font-size: 12px; color: var(--color-text-muted); font-style: italic;">Not linked to account</span>
                           </div>
                         </div>
                       </div>
 
-                      <div style="margin-bottom: 20px;">
+                      <!-- Structured Census Enrollment Card (When Contact has Census Metadata) -->
+                      <div *ngIf="getCensusData((tab.contact || tab.individual).notes).isCensus" class="census-enrollment-card">
+                        <!-- Header Bar -->
+                        <div class="census-card-header">
+                          <div class="census-title-group">
+                            <div class="census-header-icon" [ngClass]="getCensusData((tab.contact || tab.individual).notes).carrierClass">
+                              <span class="material-icons-round">health_and_safety</span>
+                            </div>
+                            <div>
+                              <div style="display: flex; align-items: center; gap: 8px;">
+                                <h4 class="census-card-title">Carrier Policy & Benefits</h4>
+                                <span class="carrier-badge" [ngClass]="getCensusData((tab.contact || tab.individual).notes).carrierClass">
+                                  <span class="carrier-dot"></span>
+                                  <span>{{ getCensusData((tab.contact || tab.individual).notes).carrier }}</span>
+                                </span>
+                              </div>
+                              <p class="census-card-subtitle">Enrolled group policy coverage imported from carrier census data</p>
+                            </div>
+                          </div>
+                          
+                          <button type="button" (click)="tab.showRawCensusNotes = !tab.showRawCensusNotes" class="btn-census-raw-toggle" title="Toggle raw census string">
+                            <span class="material-icons-round" style="font-size: 15px;">{{ tab.showRawCensusNotes ? 'visibility_off' : 'data_object' }}</span>
+                            <span>{{ tab.showRawCensusNotes ? 'Formatted View' : 'Raw String' }}</span>
+                          </button>
+                        </div>
+
+                        <!-- Raw String Drawer (shown when toggled) -->
+                        <div *ngIf="tab.showRawCensusNotes" class="raw-census-box animate-fade-in">
+                          <div class="raw-census-header">
+                            <span class="material-icons-round" style="font-size: 14px;">terminal</span>
+                            <span>Raw Census Data String</span>
+                          </div>
+                          <textarea [(ngModel)]="(tab.contact || tab.individual).notes" (ngModelChange)="onRawNotesChange(tab)" class="raw-census-textarea font-mono" rows="3"></textarea>
+                        </div>
+
+                        <!-- Formatted View -->
+                        <ng-container *ngIf="!tab.showRawCensusNotes">
+                          <!-- Policy & Member Key Metrics Grid -->
+                          <div class="census-metrics-grid">
+                            <!-- Certificate # -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).certNumber">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">badge</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Certificate #</span>
+                                <span class="metric-value font-mono">#{{ getCensusData((tab.contact || tab.individual).notes).certNumber }}</span>
+                              </div>
+                            </div>
+
+                            <!-- Policy # -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).policyNumber">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">policy</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Policy #</span>
+                                <span class="metric-value font-mono">#{{ getCensusData((tab.contact || tab.individual).notes).policyNumber }}</span>
+                              </div>
+                            </div>
+
+                            <!-- Division & Class -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).division || getCensusData((tab.contact || tab.individual).notes).classGroup">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">corporate_fare</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Division / Class</span>
+                                <span class="metric-value" title="{{ getCensusData((tab.contact || tab.individual).notes).classGroup }}">
+                                  <span *ngIf="getCensusData((tab.contact || tab.individual).notes).division">Div {{ getCensusData((tab.contact || tab.individual).notes).division }}</span>
+                                  <span *ngIf="getCensusData((tab.contact || tab.individual).notes).division && getCensusData((tab.contact || tab.individual).notes).classGroup"> &bull; </span>
+                                  <span *ngIf="getCensusData((tab.contact || tab.individual).notes).classGroup">{{ getCensusData((tab.contact || tab.individual).notes).classGroup }}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <!-- Annual Salary (if present) -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).salary">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">payments</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Annual Salary</span>
+                                <span class="metric-value font-mono">{{ getCensusData((tab.contact || tab.individual).notes).salary }}</span>
+                              </div>
+                            </div>
+
+                            <!-- Hire Date (if present) -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).hireDate">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">event</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Hire Date</span>
+                                <span class="metric-value">{{ getCensusData((tab.contact || tab.individual).notes).hireDate }}</span>
+                              </div>
+                            </div>
+
+                            <!-- Date of Birth (if present) -->
+                            <div class="census-metric-tile" *ngIf="getCensusData((tab.contact || tab.individual).notes).birthDate">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">cake</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Date of Birth</span>
+                                <span class="metric-value">{{ getCensusData((tab.contact || tab.individual).notes).birthDate }}</span>
+                              </div>
+                            </div>
+
+                            <!-- Member Address (if present) -->
+                            <div class="census-metric-tile metric-span-full" *ngIf="getCensusData((tab.contact || tab.individual).notes).address">
+                              <div class="metric-icon-wrap">
+                                <span class="material-icons-round">location_on</span>
+                              </div>
+                              <div class="metric-content">
+                                <span class="metric-label">Member Address</span>
+                                <span class="metric-value">{{ getCensusData((tab.contact || tab.individual).notes).address }}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Enrolled Coverages & Benefits Section -->
+                          <div *ngIf="getCensusData((tab.contact || tab.individual).notes).benefits.length > 0" class="census-benefits-section">
+                            <div class="census-section-subtitle">
+                              <span class="material-icons-round" style="color: var(--color-primary-hover);">shield</span>
+                              <span>Enrolled Coverages & Benefits ({{ getCensusData((tab.contact || tab.individual).notes).benefits.length }})</span>
+                            </div>
+                            <div class="census-benefits-grid">
+                              <div *ngFor="let benefit of getCensusData((tab.contact || tab.individual).notes).benefits" class="census-benefit-card category-{{ benefit.category }}">
+                                <div class="benefit-card-header">
+                                  <div class="benefit-icon-badge">
+                                    <span class="material-icons-round">{{ benefit.icon }}</span>
+                                  </div>
+                                  <span class="benefit-code-badge">{{ benefit.code }}</span>
+                                  <span *ngIf="benefit.coverageType" class="coverage-tier-pill tier-{{ benefit.coverageType.toLowerCase() }}">
+                                    {{ benefit.coverageType }}
+                                  </span>
+                                </div>
+                                <div class="benefit-name-label" title="{{ benefit.name }}">{{ benefit.name }}</div>
+                                <div class="benefit-card-footer">
+                                  <div *ngIf="benefit.coverageAmount" class="benefit-amount-wrap">
+                                    <span class="benefit-amount-value">{{ benefit.coverageAmount }}</span>
+                                    <span *ngIf="benefit.periodSuffix" class="benefit-period-suffix">{{ benefit.periodSuffix }}</span>
+                                  </div>
+                                  <div *ngIf="!benefit.coverageAmount" class="benefit-covered-pill">
+                                    <span class="material-icons-round">check_circle</span>
+                                    <span>Enrolled</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Covered Dependents Section -->
+                          <div *ngIf="getCensusData((tab.contact || tab.individual).notes).dependents.length > 0" class="census-dependents-section">
+                            <div class="census-section-subtitle">
+                              <span class="material-icons-round" style="color: #38bdf8;">diversity_1</span>
+                              <span>Covered Dependents ({{ getCensusData((tab.contact || tab.individual).notes).dependents.length }})</span>
+                            </div>
+                            <div class="dependents-chips-grid">
+                              <div *ngFor="let dep of getCensusData((tab.contact || tab.individual).notes).dependents" class="dependent-chip">
+                                <div class="dependent-avatar">
+                                  <span class="material-icons-round">person</span>
+                                </div>
+                                <div class="dependent-info">
+                                  <span class="dependent-name">{{ dep.name }}</span>
+                                  <span class="dependent-rel-tag">{{ dep.relationship }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </ng-container>
+
+                        <!-- Additional Remarks & Notes Textarea -->
+                        <div class="census-user-notes-section">
+                          <div class="census-section-subtitle">
+                            <span class="material-icons-round" style="color: var(--color-text-secondary);">edit_note</span>
+                            <span>Additional Remarks & Notes</span>
+                          </div>
+                          <textarea [ngModel]="getTabUserNotes(tab)" (ngModelChange)="onTabUserNotesChange(tab, $event)" placeholder="Add custom notes, member communications, or remarks..." class="activity-textarea" style="min-height: 60px; width: 100%; box-sizing: border-box;"></textarea>
+                        </div>
+                      </div>
+
+                      <!-- Standard Notes & Remarks (When Contact does NOT have Census Metadata) -->
+                      <div *ngIf="!getCensusData((tab.contact || tab.individual).notes).isCensus" style="margin-bottom: 20px;">
                         <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Notes & Remarks</label>
-                        <textarea [(ngModel)]="tab.individual.notes" placeholder="Additional notes regarding this plan administrator..." class="activity-textarea" style="min-height: 80px; width: 100%; box-sizing: border-box;"></textarea>
+                        <textarea [(ngModel)]="(tab.contact || tab.individual).notes" placeholder="Additional notes regarding this contact..." class="activity-textarea" style="min-height: 80px; width: 100%; box-sizing: border-box;"></textarea>
                       </div>
 
                       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border); padding-top: 16px;">
-                        <button (click)="deleteIndividualRecord(tab.individual.id, tab.id)" class="btn-text-danger" title="Delete Individual">
+                        <button (click)="deleteContactRecord((tab.contact || tab.individual).id, tab.id)" class="btn-text-danger" title="Delete Contact">
                           <span class="material-icons-round" style="font-size: 16px;">delete</span>
-                          <span>Delete Individual</span>
+                          <span>Delete Contact</span>
                         </button>
-                        <button *ngIf="isIndividualDirty(tab)" (click)="saveIndividual(tab)" class="btn-text-save animate-fade-in" [disabled]="tab.isSaving" title="Save Changes">
+                        <button *ngIf="isContactDirty(tab)" (click)="saveContact(tab)" class="btn-text-save animate-fade-in" [disabled]="tab.isSaving" title="Save Changes">
                           <span class="material-icons-round" style="font-size: 16px;" [class.spinning]="tab.isSaving">{{ tab.isSaving ? 'sync' : 'save' }}</span>
                           <span>Save Changes</span>
                         </button>
@@ -1088,19 +1338,19 @@
                       <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Created At</span>
                         <span class="meta-value" style="font-size: 12px; font-weight: 500;">
-                          {{ tab.individual.created_at ? (tab.individual.created_at | date:'medium') : '—' }}
+                          {{ (tab.contact || tab.individual).created_at ? ((tab.contact || tab.individual).created_at | date:'medium') : '—' }}
                         </span>
                       </div>
                       <div class="meta-item" style="display: flex; flex-direction: column; gap: 2px;">
                         <span class="meta-label" style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: 0.05em;">Last Updated</span>
                         <span class="meta-value" style="font-size: 12px; font-weight: 500;">
-                          {{ tab.individual.updated_at ? (tab.individual.updated_at | date:'medium') : '—' }}
+                          {{ (tab.contact || tab.individual).updated_at ? ((tab.contact || tab.individual).updated_at | date:'medium') : '—' }}
                         </span>
                       </div>
-                      <div *ngIf="tab.individual.account_id || tab.individual.account_name" class="meta-item" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--glass-border);">
-                        <button (click)="openAccountTabById(tab.individual.account_id, tab.individual.account_name)" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                      <div *ngIf="(tab.contact || tab.individual).account_id || (tab.contact || tab.individual).account_name" class="meta-item" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--glass-border);">
+                        <button (click)="openAccountTabById((tab.contact || tab.individual).account_id, (tab.contact || tab.individual).account_name)" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px; display: flex; align-items: center; gap: 6px;">
                           <span class="material-icons-round" style="font-size: 15px;">business</span>
-                          Go to {{ tab.individual.account_name || 'Account' }}
+                          Go to {{ (tab.contact || tab.individual).account_name || 'Account' }}
                         </button>
                       </div>
                     </div>
@@ -1113,20 +1363,201 @@
       </ng-container>
     </section>
 
-    <!-- Center Panel: Individuals in Database Directory View -->
-    <section *ngIf="activeView === 'individuals'" class="panel-crm-records glass-panel">
+    <!-- Left Panel: Contacts Census Import -->
+    <section *ngIf="activeView === 'contacts' || activeView === 'individuals'" class="panel-import glass-panel glow-effect" [class.collapsed]="isContactsImportCollapsed || isIndividualsImportCollapsed">
+      <!-- Expanded State Content -->
+      <ng-container *ngIf="!isContactsImportCollapsed && !isIndividualsImportCollapsed">
+        <div class="panel-header" style="justify-content: space-between; align-items: center; width: 100%;">
+          <div class="header-left" style="display: flex; align-items: center; gap: 12px;">
+            <span class="material-icons-round header-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);">contacts</span>
+            <h2>Import Data</h2>
+          </div>
+          <button (click)="isContactsImportCollapsed = true; isIndividualsImportCollapsed = true" class="btn btn-secondary btn-icon" title="Collapse Panel" style="padding: 0; min-width: auto; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <span class="material-icons-round" style="font-size: 18px;">chevron_left</span>
+          </button>
+        </div>
+        
+        <p class="panel-description">
+          Upload carrier census files to enroll and sync plan members, salary, benefits coverages, and dependents into Contacts.
+        </p>
+
+        <!-- Carrier Format Selector -->
+        <div class="census-carrier-select-box" style="margin-bottom: 12px;">
+          <label style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">
+            Carrier Format
+          </label>
+          <div class="custom-select-wrapper" style="position: relative;">
+            <select [(ngModel)]="selectedCensusCarrier" class="form-input custom-carrier-select" style="width: 100%; appearance: none; -webkit-appearance: none; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #f8fafc; font-size: 13px; padding: 8px 32px 8px 12px; cursor: pointer;">
+              <option *ngFor="let fmt of availableCarrierFormats" [value]="fmt.carrierId">
+                {{ fmt.carrierName }}
+              </option>
+            </select>
+            <span class="material-icons-round" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #94a3b8; font-size: 18px;">expand_more</span>
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.4;">
+            <span *ngIf="selectedCensusCarrier === 'ManuLife'">Supports ManuLife Member Detail Excel (.xlsx / .xls)</span>
+            <span *ngIf="selectedCensusCarrier === 'CanadaLife'">Supports Canada Life: ENROLLEMP (40 col), ENROLLBFT (20 col), ENROLLBNC (14 col)</span>
+            <span *ngIf="selectedCensusCarrier === 'GroupSource'">Supports GroupSource 56-col consolidated billing (.csv)</span>
+            <span *ngIf="selectedCensusCarrier === 'Generic'">Supports Generic CSV / TXT census files</span>
+          </div>
+        </div>
+
+        <!-- Import Results Summary (Positioned at Top for Instant Visibility) -->
+        <div *ngIf="censusImportResults" class="import-results-card glass-panel" style="margin-bottom: 8px; border-color: rgba(56, 189, 248, 0.4); box-shadow: 0 4px 20px rgba(56, 189, 248, 0.15);">
+          <div class="results-header" style="justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-round success-icon" style="color: #38bdf8; font-size: 20px;">check_circle</span>
+              <h3 style="font-size: 13.5px; font-weight: 700; color: #f8fafc; margin: 0;">Census Enrolled Successfully</h3>
+            </div>
+            <button (click)="dismissCensusResults()" class="btn-remove-file" title="Dismiss results" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 2px;">
+              <span class="material-icons-round" style="font-size: 16px;">close</span>
+            </button>
+          </div>
+          <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+            Carrier: <strong style="color: #f8fafc;">{{ censusImportResults.carrier }}</strong>
+            <span *ngIf="censusImportResults.policyNumber"> | Policy: <strong style="color: #f8fafc;">#{{ censusImportResults.policyNumber }}</strong></span>
+          </p>
+          <div class="results-stats">
+            <div class="stat-box success">
+              <span class="stat-val">{{ censusImportResults.totalEmployees || censusImportResults.importedContacts || censusImportResults.importedIndividuals }}</span>
+              <span class="stat-label">Enrolled</span>
+            </div>
+            <div class="stat-box" style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.25);">
+              <span class="stat-val" style="color: #a78bfa;">{{ censusImportResults.totalBenefits }}</span>
+              <span class="stat-label">Coverages</span>
+            </div>
+            <div class="stat-box total" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25);">
+              <span class="stat-val">{{ censusImportResults.totalDependents }}</span>
+              <span class="stat-label">Dependents</span>
+            </div>
+          </div>
+
+          <div *ngIf="censusImportResults.matchedAccount" style="font-size: 11px; color: #34d399; display: flex; align-items: center; gap: 5px; padding: 5px 8px; background: rgba(16, 185, 129, 0.08); border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">
+            <span class="material-icons-round" style="font-size: 14px;">link</span>
+            <span>Linked to <strong>{{ censusImportResults.matchedAccount }}</strong></span>
+          </div>
+
+          <!-- Quick Verification Action Buttons -->
+          <div class="results-actions-list">
+            <button (click)="viewInContactsTable(censusImportResults.matchedAccount)" class="btn-census-verify" title="Filter and view enrolled members in the table">
+              <span class="material-icons-round" style="font-size: 15px;">contacts</span>
+              <span>View in Contacts Table</span>
+            </button>
+            <button (click)="openCensusRosterModal(censusImportResults.carrier)" class="btn-census-verify" style="background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.35); color: #c4b5fd;" title="Inspect the full census roster with all benefit lines and volumes">
+              <span class="material-icons-round" style="font-size: 15px;">fact_check</span>
+              <span>Inspect Full Census Roster</span>
+            </button>
+            <button (click)="dismissCensusResults()" class="btn-census-verify" style="background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); color: #94a3b8; font-weight: 500; font-size: 10.5px;" title="Reset import panel to upload more census files">
+              <span class="material-icons-round" style="font-size: 14px;">upload_file</span>
+              <span>Import Another Census File</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div 
+          class="drop-zone"
+          [class.dragover]="contactsDragOver || individualsDragOver"
+          (dragover)="onContactsDragOver($event)"
+          (dragleave)="onContactsDragLeave($event)"
+          (drop)="onContactsDrop($event)"
+          (click)="contactsFileInput.click()"
+        >
+          <input 
+            #contactsFileInput 
+            type="file" 
+            multiple
+            accept=".txt,.csv,.xlsx,.xls" 
+            (change)="onContactsFilesSelected($event)" 
+            style="display: none;"
+          >
+          <span class="material-icons-round upload-cloud" style="color: #38bdf8;">backup</span>
+          <div class="drop-text">
+            <span class="highlight" style="color: #38bdf8;">Drag & drop census files</span> or click to browse
+          </div>
+          <p class="file-limits">Supports Excel (.xlsx), .CSV, or .TXT enrollment files</p>
+        </div>
+
+        <!-- Selected Files List -->
+        <div *ngIf="(contactsCensusFiles.length > 0 || individualsCensusFiles.length > 0)" class="census-staged-files-container" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Staged Files ({{ contactsCensusFiles.length || individualsCensusFiles.length }})</span>
+            <button (click)="clearCensusFiles('contacts')" class="btn-text-link" style="font-size: 11px; color: #ef4444; background: none; border: none; cursor: pointer; padding: 0;">Clear All</button>
+          </div>
+
+          <div *ngFor="let file of (contactsCensusFiles.length ? contactsCensusFiles : individualsCensusFiles); let i = index" class="selected-file-panel glass-panel" style="padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+            <div class="file-info" style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              <span class="material-icons-round file-icon" style="font-size: 20px; color: #38bdf8;">description</span>
+              <div class="file-details" style="min-width: 0; flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="file-name" style="font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">{{ file.name }}</span>
+                  <span class="census-type-badge" [ngClass]="getCensusFileTag(file.name).class">
+                    {{ getCensusFileTag(file.name).label }}
+                  </span>
+                </div>
+                <span class="file-size" style="font-size: 11px; color: #64748b;">{{ (file.size / 1024) | number:'1.0-1' }} KB</span>
+              </div>
+            </div>
+            <button (click)="removeCensusFile(i, 'contacts')" class="btn-remove-file" title="Remove file" style="background: none; border: none; color: #64748b; cursor: pointer; padding: 4px; border-radius: 4px;">
+              <span class="material-icons-round" style="font-size: 16px;">close</span>
+            </button>
+          </div>
+
+          <button (click)="startCensusImport('contacts')" class="btn btn-primary btn-import-block" [disabled]="isUploadingCensus" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); margin-top: 6px;">
+            <span class="material-icons-round">bolt</span>
+            <span>Begin Census Import</span>
+          </button>
+        </div>
+
+        <!-- Uploading/Processing State -->
+        <div *ngIf="isUploadingCensus" class="import-progress-card glass-panel" style="margin-top: 12px;">
+          <div class="progress-header">
+            <span>Parsing census records & enrolling...</span>
+            <span class="progress-percent">{{ censusUploadProgress }}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" [style.width.%]="censusUploadProgress" style="background: #38bdf8;"></div>
+          </div>
+        </div>
+
+        <!-- Error Alert -->
+        <div *ngIf="censusErrorMessage" class="import-error-banner" style="margin-top: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); padding: 10px 12px; border-radius: 8px; color: #f87171; font-size: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-icons-round" style="font-size: 16px;">error_outline</span>
+            <strong>Import Error</strong>
+          </div>
+          <p style="margin: 4px 0 0 0;">{{ censusErrorMessage }}</p>
+        </div>
+      </ng-container>
+
+      <!-- Collapsed State Content -->
+      <ng-container *ngIf="isContactsImportCollapsed || isIndividualsImportCollapsed">
+        <div class="collapsed-import-container" (click)="isContactsImportCollapsed = false; isIndividualsImportCollapsed = false" title="Expand Import Panel">
+          <span class="material-icons-round header-icon" style="margin: 0; background: rgba(56, 189, 248, 0.15); color: #38bdf8; box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);">contacts</span>
+          <div class="collapsed-vertical-text">
+            Census Import
+          </div>
+          <button class="expand-arrow-btn">
+            <span class="material-icons-round">chevron_right</span>
+          </button>
+        </div>
+      </ng-container>
+    </section>
+
+    <!-- Center Panel: Contacts in Database Directory View -->
+    <section *ngIf="activeView === 'contacts' || activeView === 'individuals'" class="panel-crm-records glass-panel">
       <div class="panel-header" style="justify-content: space-between;">
         <div class="header-left" style="display: flex; align-items: center; width: 100%;">
-          <span class="material-icons-round header-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);">badge</span>
-          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">All Individuals</h2>
+          <span class="material-icons-round header-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);">contacts</span>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">All Contacts</h2>
           
           <!-- Search Bar -->
           <div class="meetings-search-box">
             <span class="material-icons-round">search</span>
             <input 
               type="text" 
-              [(ngModel)]="individualsSearchQuery" 
-              placeholder="Search Individuals (Name, Email, Phone, Account)..."
+              [(ngModel)]="contactsSearchQuery" 
+              placeholder="Search Contacts (Name, Email, Phone, Account)..."
               class="meetings-search-input"
               style="width: 300px;"
             >
@@ -1135,36 +1566,89 @@
 
         <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
           <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;">
-            {{ filteredIndividuals.length }} of {{ individualsList.length }} Items
+            {{ filteredContacts.length }} of {{ contactsList.length }} Items
           </span>
-          <button (click)="openCreateIndividualModal()" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+          <button (click)="openCreateContactModal()" class="btn btn-contact-action" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
             <span class="material-icons-round" style="font-size: 16px;">person_add</span>
-            Add Individual
+            Add Contact
           </button>
-          <button (click)="loadIndividuals()" class="btn btn-secondary btn-icon" title="Refresh individuals list" [disabled]="isLoadingIndividuals">
-            <span class="material-icons-round" [class.spinning]="isLoadingIndividuals">sync</span>
+          <button (click)="loadContacts()" class="btn btn-secondary btn-icon" title="Refresh contacts list" [disabled]="isLoadingContacts">
+            <span class="material-icons-round" [class.spinning]="isLoadingContacts">sync</span>
           </button>
         </div>
       </div>
 
-      <!-- Individuals Table -->
+      <!-- Contacts Table -->
       <div class="table-container">
-        <div *ngIf="isLoadingIndividuals && individualsList.length === 0" class="loading-state">
+        <div *ngIf="isLoadingContacts && contactsList.length === 0" class="loading-state">
           <span class="material-icons-round spinning loading-icon">sync</span>
-          <p>Fetching individuals from database...</p>
+          <p>Fetching contacts from database...</p>
         </div>
 
-        <div *ngIf="!isLoadingIndividuals && filteredIndividuals.length === 0" class="empty-state">
-          <span class="material-icons-round empty-icon" style="color: #38bdf8;">badge</span>
-          <h3>No Individuals Found</h3>
-          <p>No individual records match your search or exist in the database yet.</p>
-          <button (click)="openCreateIndividualModal()" class="btn btn-primary" style="margin-top: 12px; padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+        <div *ngIf="!isLoadingContacts && filteredContacts.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon" style="color: #38bdf8;">contacts</span>
+          <h3>No Contacts Found</h3>
+          <p>No contact records match your search or exist in the database yet.</p>
+          <button (click)="openCreateContactModal()" class="btn btn-contact-action" style="margin-top: 12px; padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
             <span class="material-icons-round" style="font-size: 16px;">add</span>
-            Create New Individual
+            Create New Contact
           </button>
         </div>
 
-        <table *ngIf="filteredIndividuals.length > 0" class="accounts-table">
+        <!-- Census Import Success Banner in Contacts View -->
+        <div *ngIf="censusImportResults" class="census-quick-banner glass-panel" style="margin-bottom: 14px; padding: 12px 16px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.35); display: flex; align-items: center; justify-content: space-between; gap: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span class="material-icons-round" style="color: #38bdf8; font-size: 24px;">verified</span>
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 13px; font-weight: 700; color: #f8fafc;">Census Enrolled Successfully:</span>
+                <span style="font-size: 12px; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 1px 8px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.25);">{{ censusImportResults.carrier }}</span>
+              </div>
+              <p style="font-size: 12px; color: #94a3b8; margin: 3px 0 0 0;">
+                <strong>{{ censusImportResults.totalEmployees || censusImportResults.importedContacts || censusImportResults.importedIndividuals }}</strong> members enrolled ({{ censusImportResults.totalBenefits }} coverages, {{ censusImportResults.totalDependents }} dependents) linked to <strong style="color: #38bdf8;">{{ censusImportResults.matchedAccount || 'Mulgrave School' }}</strong>
+              </p>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <button (click)="setContactsFilter(censusImportResults.matchedAccount || 'Mulgrave School')" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+              <span class="material-icons-round" style="font-size: 15px;">filter_alt</span>
+              Filter Table to {{ censusImportResults.matchedAccount || 'Mulgrave School' }}
+            </button>
+            <button (click)="openCensusRosterModal(censusImportResults.carrier)" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; border-color: rgba(56, 189, 248, 0.35); color: #38bdf8; background: rgba(56, 189, 248, 0.1);">
+              <span class="material-icons-round" style="font-size: 15px;">fact_check</span>
+              Inspect Full Census Roster
+            </button>
+            <button (click)="dismissCensusResults()" class="column-picker-close-btn" title="Dismiss banner" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 50%; color: #94a3b8; cursor: pointer;">
+              <span class="material-icons-round" style="font-size: 15px;">close</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Filter Pills for Verification -->
+        <div class="contacts-filter-pills">
+          <button (click)="setContactsFilter('all')" class="filter-pill" [class.active]="selectedContactsFilter === 'all'">
+            <span class="material-icons-round" style="font-size: 14px;">groups</span>
+            <span>All Contacts ({{ contactsList.length }})</span>
+          </button>
+          <button (click)="setContactsFilter('members')" class="filter-pill" [class.active]="selectedContactsFilter === 'members'">
+            <span class="material-icons-round" style="font-size: 14px;">badge</span>
+            <span>Plan Members ({{ planMembersCount }})</span>
+          </button>
+          <button (click)="setContactsFilter('Mulgrave School')" class="filter-pill" [class.active]="selectedContactsFilter === 'Mulgrave School'">
+            <span class="material-icons-round" style="font-size: 14px;">business</span>
+            <span>Mulgrave School</span>
+          </button>
+          <button (click)="setContactsFilter('admins')" class="filter-pill" [class.active]="selectedContactsFilter === 'admins'">
+            <span class="material-icons-round" style="font-size: 14px;">admin_panel_settings</span>
+            <span>Plan Administrators ({{ planAdminsCount }})</span>
+          </button>
+          <button (click)="openCensusRosterModal('ManuLife')" class="filter-pill" style="margin-left: auto; background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.25); color: #38bdf8;">
+            <span class="material-icons-round" style="font-size: 14px;">fact_check</span>
+            <span>Census Roster</span>
+          </button>
+        </div>
+
+        <table *ngIf="filteredContacts.length > 0" class="accounts-table">
           <thead>
             <tr>
               <th style="width: 40px; text-align: center;"><input type="checkbox"></th>
@@ -1178,11 +1662,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let ind of filteredIndividuals" class="account-row">
+            <tr *ngFor="let ind of filteredContacts" class="account-row">
               <td style="text-align: center;"><input type="checkbox"></td>
               <td class="cell-name">
-                <span class="material-icons-round avatar" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8;">badge</span>
-                <a href="javascript:void(0)" (click)="openIndividualTab(ind)" class="client-detail-link name-text meeting-row-name" title="Open individual page">
+                <span class="material-icons-round avatar" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8;">contacts</span>
+                <a href="javascript:void(0)" (click)="openContactTab(ind)" class="client-detail-link name-text meeting-row-name" title="Open contact page">
                   {{ ind.name }}
                 </a>
               </td>
@@ -1205,27 +1689,361 @@
                 <span *ngIf="!ind.email" style="color: #64748b;">—</span>
               </td>
               <td>
-                <a *ngIf="ind.phone" [href]="'tel:' + ind.phone" style="color: var(--color-text-primary); text-decoration: none;">
+                <a *ngIf="isPhoneLink(ind.phone)" [href]="'tel:' + ind.phone" style="color: var(--color-text-primary); text-decoration: none;">
                   {{ ind.phone }}
                 </a>
+                <span *ngIf="ind.phone && !isPhoneLink(ind.phone)" style="color: #94a3b8;">
+                  {{ ind.phone }}
+                </span>
                 <span *ngIf="!ind.phone" style="color: #64748b;">—</span>
               </td>
               <td>
                 <span class="status-badge" [ngClass]="{
-                  'status-held': ind.status === 'Active' || !ind.status,
-                  'status-notheld': ind.status === 'Inactive'
+                  'status-held': (ind.status || '').toLowerCase() === 'active' || !ind.status,
+                  'status-terminated': (ind.status || '').toLowerCase().includes('term') || (ind.status || '').toLowerCase() === 'inactive'
                 }">
                   {{ ind.status || 'Active' }}
                 </span>
               </td>
               <td style="text-align: right; padding-right: 20px;">
-                <div style="display: inline-flex; gap: 8px;">
-                  <button (click)="openIndividualTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
+                <div style="display: inline-flex; gap: 6px; align-items: center;">
+                  <button (click)="openContactTab(ind)" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
                     <span class="material-icons-round" style="font-size: 14px;">open_in_new</span>
                     Profile
                   </button>
-                  <button (click)="deleteIndividualRecord(ind.id)" class="btn btn-danger" style="padding: 4px 8px; font-size: 11px;" title="Delete individual">
-                    <span class="material-icons-round" style="font-size: 14px;">delete</span>
+                  <button (click)="deleteContactRecord(ind.id)" class="table-row-delete-btn" title="Delete contact">
+                    <span class="material-icons-round">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Left Panel: Carriers Census Import -->
+    <section *ngIf="activeView === 'carriers'" class="panel-import glass-panel glow-effect" [class.collapsed]="isCarriersImportCollapsed">
+      <!-- Expanded State Content -->
+      <ng-container *ngIf="!isCarriersImportCollapsed">
+        <div class="panel-header" style="justify-content: space-between; align-items: center; width: 100%;">
+          <div class="header-left" style="display: flex; align-items: center; gap: 12px;">
+            <span class="material-icons-round header-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981; box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);">health_and_safety</span>
+            <h2>Import Data</h2>
+          </div>
+          <button (click)="isCarriersImportCollapsed = true" class="btn btn-secondary btn-icon" title="Collapse Panel" style="padding: 0; min-width: auto; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <span class="material-icons-round" style="font-size: 18px;">chevron_left</span>
+          </button>
+        </div>
+        
+        <p class="panel-description">
+          Upload carrier census files. Automatically parses carrier-specific enrollment data, policy identifiers, and benefits records.
+        </p>
+
+        <!-- Carrier Format Selector -->
+        <div class="census-carrier-select-box" style="margin-bottom: 12px;">
+          <label style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">
+            Carrier Format
+          </label>
+          <div class="custom-select-wrapper" style="position: relative;">
+            <select [(ngModel)]="selectedCensusCarrier" class="form-input custom-carrier-select" style="width: 100%; appearance: none; -webkit-appearance: none; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #f8fafc; font-size: 13px; padding: 8px 32px 8px 12px; cursor: pointer;">
+              <option *ngFor="let fmt of availableCarrierFormats" [value]="fmt.carrierId">
+                {{ fmt.carrierName }}
+              </option>
+            </select>
+            <span class="material-icons-round" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #94a3b8; font-size: 18px;">expand_more</span>
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.4;">
+            <span *ngIf="selectedCensusCarrier === 'ManuLife'">ManuLife format: EMP (40 cols), BFT (20 cols), BNC (14 cols)</span>
+            <span *ngIf="selectedCensusCarrier === 'CanadaLife'">Canada Life group enrollment files</span>
+            <span *ngIf="selectedCensusCarrier === 'GroupSource'">GroupSource ledger census format</span>
+            <span *ngIf="selectedCensusCarrier === 'Generic'">Standard delimited census format</span>
+          </div>
+        </div>
+
+        <!-- Import Results Summary (Positioned at Top for Instant Visibility) -->
+        <div *ngIf="censusImportResults" class="import-results-card glass-panel" style="margin-bottom: 8px; border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);">
+          <div class="results-header" style="justify-content: space-between; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-icons-round success-icon" style="color: #10b981; font-size: 20px;">check_circle</span>
+              <h3 style="font-size: 13.5px; font-weight: 700; color: #f8fafc; margin: 0;">Census Enrolled Successfully</h3>
+            </div>
+            <button (click)="dismissCensusResults()" class="btn-remove-file" title="Dismiss results" style="background: none; border: none; color: #94a3b8; cursor: pointer; padding: 2px;">
+              <span class="material-icons-round" style="font-size: 16px;">close</span>
+            </button>
+          </div>
+          <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+            Carrier: <strong style="color: #f8fafc;">{{ censusImportResults.carrier }}</strong>
+            <span *ngIf="censusImportResults.policyNumber"> | Policy: <strong style="color: #f8fafc;">#{{ censusImportResults.policyNumber }}</strong></span>
+          </p>
+          <div class="results-stats">
+            <div class="stat-box success">
+              <span class="stat-val">{{ censusImportResults.totalEmployees || censusImportResults.importedContacts || censusImportResults.importedIndividuals }}</span>
+              <span class="stat-label">Enrolled</span>
+            </div>
+            <div class="stat-box" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25);">
+              <span class="stat-val" style="color: #34d399;">{{ censusImportResults.totalBenefits }}</span>
+              <span class="stat-label">Coverages</span>
+            </div>
+            <div class="stat-box total" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25);">
+              <span class="stat-val">{{ censusImportResults.totalDependents }}</span>
+              <span class="stat-label">Dependents</span>
+            </div>
+          </div>
+
+          <div *ngIf="censusImportResults.matchedAccount" style="font-size: 11px; color: #34d399; display: flex; align-items: center; gap: 5px; padding: 5px 8px; background: rgba(16, 185, 129, 0.08); border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">
+            <span class="material-icons-round" style="font-size: 14px;">link</span>
+            <span>Linked to <strong>{{ censusImportResults.matchedAccount }}</strong></span>
+          </div>
+
+          <!-- Quick Verification Action Buttons -->
+          <div class="results-actions-list">
+            <button (click)="viewInContactsTable(censusImportResults.matchedAccount)" class="btn-census-verify" title="View enrolled members in the Contacts table">
+              <span class="material-icons-round" style="font-size: 15px;">contacts</span>
+              <span>View in Contacts Table</span>
+            </button>
+            <button (click)="openCensusRosterModal(censusImportResults.carrier)" class="btn-census-verify" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.35); color: #34d399;" title="Inspect the full census roster with all benefit lines and volumes">
+              <span class="material-icons-round" style="font-size: 15px;">fact_check</span>
+              <span>Inspect Full Census Roster</span>
+            </button>
+            <button (click)="dismissCensusResults()" class="btn-census-verify" style="background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); color: #94a3b8; font-weight: 500; font-size: 10.5px;" title="Reset import panel to upload more census files">
+              <span class="material-icons-round" style="font-size: 14px;">upload_file</span>
+              <span>Import Another Census File</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div 
+          class="drop-zone"
+          [class.dragover]="carriersDragOver"
+          (dragover)="onCarriersDragOver($event)"
+          (dragleave)="onCarriersDragLeave($event)"
+          (drop)="onCarriersDrop($event)"
+          (click)="carrierFileInput.click()"
+        >
+          <input 
+            #carrierFileInput 
+            type="file" 
+            multiple
+            accept=".txt,.csv,.xlsx,.xls" 
+            (change)="onCarriersFilesSelected($event)" 
+            style="display: none;"
+          >
+          <span class="material-icons-round upload-cloud" style="color: #10b981;">backup</span>
+          <div class="drop-text">
+            <span class="highlight" style="color: #10b981;">Drag & drop carrier census</span> or browse
+          </div>
+          <p class="file-limits">Supports Excel (.xlsx), CanadaLife TXT, or GroupSource CSV</p>
+        </div>
+
+        <!-- Selected Files List -->
+        <div *ngIf="carriersCensusFiles.length > 0" class="census-staged-files-container" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: #94a3b8;">Staged Files ({{ carriersCensusFiles.length }})</span>
+            <button (click)="clearCensusFiles('carriers')" class="btn-text-link" style="font-size: 11px; color: #ef4444; background: none; border: none; cursor: pointer; padding: 0;">Clear All</button>
+          </div>
+
+          <div *ngFor="let file of carriersCensusFiles; let i = index" class="selected-file-panel glass-panel" style="padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
+            <div class="file-info" style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              <span class="material-icons-round file-icon" style="font-size: 20px; color: #10b981;">description</span>
+              <div class="file-details" style="min-width: 0; flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="file-name" style="font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">{{ file.name }}</span>
+                  <span class="census-type-badge" [ngClass]="getCensusFileTag(file.name).class">
+                    {{ getCensusFileTag(file.name).label }}
+                  </span>
+                </div>
+                <span class="file-size" style="font-size: 11px; color: #64748b;">{{ (file.size / 1024) | number:'1.0-1' }} KB</span>
+              </div>
+            </div>
+            <button (click)="removeCensusFile(i, 'carriers')" class="btn-remove-file" title="Remove file" style="background: none; border: none; color: #64748b; cursor: pointer; padding: 4px; border-radius: 4px;">
+              <span class="material-icons-round" style="font-size: 16px;">close</span>
+            </button>
+          </div>
+
+          <button (click)="startCensusImport('carriers')" class="btn btn-primary btn-import-block" [disabled]="isUploadingCensus" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%); margin-top: 6px;">
+            <span class="material-icons-round">bolt</span>
+            <span>Begin Census Import</span>
+          </button>
+        </div>
+
+        <!-- Uploading/Processing State -->
+        <div *ngIf="isUploadingCensus" class="import-progress-card glass-panel" style="margin-top: 12px;">
+          <div class="progress-header">
+            <span>Parsing carrier census & syncing...</span>
+            <span class="progress-percent">{{ censusUploadProgress }}%</span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" [style.width.%]="censusUploadProgress" style="background: #10b981;"></div>
+          </div>
+        </div>
+
+        <!-- Error Alert -->
+        <div *ngIf="censusErrorMessage" class="import-error-banner" style="margin-top: 12px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); padding: 10px 12px; border-radius: 8px; color: #f87171; font-size: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-icons-round" style="font-size: 16px;">error_outline</span>
+            <strong>Import Error</strong>
+          </div>
+          <p style="margin: 4px 0 0 0;">{{ censusErrorMessage }}</p>
+        </div>
+      </ng-container>
+
+      <!-- Collapsed State Content -->
+      <ng-container *ngIf="isCarriersImportCollapsed">
+        <div class="collapsed-import-container" (click)="isCarriersImportCollapsed = false" title="Expand Import Panel">
+          <span class="material-icons-round header-icon" style="margin: 0; background: rgba(16, 185, 129, 0.15); color: #10b981; box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);">health_and_safety</span>
+          <div class="collapsed-vertical-text">
+            Census Import
+          </div>
+          <button class="expand-arrow-btn">
+            <span class="material-icons-round">chevron_right</span>
+          </button>
+        </div>
+      </ng-container>
+    </section>
+
+    <!-- Carriers View -->
+    <section *ngIf="activeView === 'carriers'" class="panel-crm-records glass-panel">
+      <div class="panel-header" style="justify-content: space-between;">
+        <div class="header-left" style="display: flex; align-items: center; width: 100%;">
+          <span class="material-icons-round header-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981; box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);">health_and_safety</span>
+          <h2 style="font-size: 20px; font-weight: 700; margin: 0;">Associated Carriers</h2>
+          
+          <!-- Search Bar -->
+          <div class="meetings-search-box">
+            <span class="material-icons-round">search</span>
+            <input 
+              type="text" 
+              [(ngModel)]="carriersSearchQuery" 
+              placeholder="Search Carriers (Name, Description, Identifier, Clients)..."
+              class="meetings-search-input"
+              style="width: 350px;"
+            >
+          </div>
+        </div>
+
+        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;">
+            {{ filteredCarriers.length }} of {{ carriersList.length }} Carriers
+          </span>
+          <button (click)="openCensusRosterModal(censusImportResults?.carrier || 'ManuLife')" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; border-color: rgba(56, 189, 248, 0.3); color: #38bdf8; background: rgba(56, 189, 248, 0.08);" title="Inspect full census roster of enrolled members">
+            <span class="material-icons-round" style="font-size: 16px;">fact_check</span>
+            Census Roster
+          </button>
+          <button (click)="openCreateCarrierModal()" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+            <span class="material-icons-round" style="font-size: 16px;">add</span>
+            Add Carrier
+          </button>
+          <button (click)="loadCarriers()" class="btn btn-secondary btn-icon" title="Refresh carriers list" [disabled]="isLoadingCarriers">
+            <span class="material-icons-round" [class.spinning]="isLoadingCarriers">sync</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Census Import Success Banner in Carriers View -->
+      <div *ngIf="censusImportResults" class="census-quick-banner glass-panel" style="margin-bottom: 16px; padding: 12px 16px; border-radius: 10px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(56, 189, 248, 0.35); display: flex; align-items: center; justify-content: space-between; gap: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="material-icons-round" style="color: #38bdf8; font-size: 24px;">verified</span>
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 13px; font-weight: 700; color: #f8fafc;">Census Enrolled Successfully:</span>
+              <span style="font-size: 12px; color: #38bdf8; background: rgba(56, 189, 248, 0.12); padding: 1px 8px; border-radius: 10px; border: 1px solid rgba(56, 189, 248, 0.25);">{{ censusImportResults.carrier }}</span>
+            </div>
+            <p style="font-size: 12px; color: #94a3b8; margin: 3px 0 0 0;">
+              <strong>{{ censusImportResults.totalEmployees || censusImportResults.importedContacts || censusImportResults.importedIndividuals }}</strong> members enrolled ({{ censusImportResults.totalBenefits }} coverages, {{ censusImportResults.totalDependents }} dependents) linked to <strong style="color: #38bdf8;">{{ censusImportResults.matchedAccount || 'Mulgrave School' }}</strong>
+            </p>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <button (click)="viewInContactsTable(censusImportResults.matchedAccount)" class="btn btn-primary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="material-icons-round" style="font-size: 15px;">contacts</span>
+            View in Contacts Table
+          </button>
+          <button (click)="openCensusRosterModal(censusImportResults.carrier)" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; border-color: rgba(56, 189, 248, 0.35); color: #38bdf8; background: rgba(56, 189, 248, 0.1);">
+            <span class="material-icons-round" style="font-size: 15px;">fact_check</span>
+            Inspect Full Census Roster
+          </button>
+          <button (click)="dismissCensusResults()" class="column-picker-close-btn" title="Dismiss banner" style="width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 50%; color: #94a3b8; cursor: pointer;">
+            <span class="material-icons-round" style="font-size: 15px;">close</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Carriers Table -->
+      <div class="table-container">
+        <div *ngIf="isLoadingCarriers && carriersList.length === 0" class="loading-state">
+          <span class="material-icons-round spinning loading-icon">sync</span>
+          <p>Fetching carriers from database...</p>
+        </div>
+
+        <div *ngIf="!isLoadingCarriers && filteredCarriers.length === 0" class="empty-state">
+          <span class="material-icons-round empty-icon" style="color: #10b981;">health_and_safety</span>
+          <h3>No Carriers Found</h3>
+          <p>No carrier records match your search or exist in the database yet.</p>
+          <button (click)="openCreateCarrierModal()" class="btn btn-primary" style="margin-top: 12px; padding: 8px 18px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+            <span class="material-icons-round" style="font-size: 16px;">add</span>
+            Create New Carrier
+          </button>
+        </div>
+
+        <table *ngIf="filteredCarriers.length > 0" class="accounts-table">
+          <thead>
+            <tr>
+              <th style="min-width: 170px;">Carrier</th>
+              <th style="min-width: 280px;">Description</th>
+              <th style="min-width: 150px;">Client Identifier</th>
+              <th style="min-width: 280px;">Clients</th>
+              <th style="width: 120px; text-align: right; padding-right: 16px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let c of filteredCarriers">
+              <!-- Carrier Name -->
+              <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span class="material-icons-round" style="font-size: 18px; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 6px; border-radius: 6px;">verified_user</span>
+                  <strong style="color: var(--color-text-primary); font-size: 14px; letter-spacing: 0.01em;">{{ c.carrier }}</strong>
+                </div>
+              </td>
+              <!-- Description -->
+              <td>
+                <span style="color: #94a3b8; font-size: 13px; line-height: 1.5; display: block; max-width: 380px;">
+                  {{ c.description || '—' }}
+                </span>
+              </td>
+              <!-- Client Identifier -->
+              <td>
+                <span class="client-identifier-pill" [title]="'Identifier format: ' + c.clientIdentifier">
+                  <span class="material-icons-round" style="font-size: 13px; margin-right: 3px; vertical-align: text-bottom;">vpn_key</span>
+                  {{ c.clientIdentifier || '—' }}
+                </span>
+              </td>
+              <!-- Clients -->
+              <td>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; max-width: 360px;">
+                  <ng-container *ngIf="c.clients && c.clients.length > 0; else noClients">
+                    <span *ngFor="let client of c.clients" class="client-chip" (click)="openClientAccount(client)" style="cursor: pointer;" title="Open client page for {{ client }}">
+                      <span class="material-icons-round" style="font-size: 13px; color: #38bdf8;">business</span>
+                      {{ client }}
+                    </span>
+                  </ng-container>
+                  <ng-template #noClients>
+                    <span style="color: #64748b; font-size: 12px; font-style: italic;">No clients assigned</span>
+                  </ng-template>
+                </div>
+              </td>
+              <!-- Actions -->
+              <td style="text-align: right; padding-right: 16px;">
+                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+                  <button class="btn btn-secondary btn-icon" (click)="openCensusRosterModal(c.carrier)" title="Inspect Census Roster for {{ c.carrier }}" style="width: 28px; height: 28px; padding: 0; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+                    <span class="material-icons-round" style="font-size: 15px;">fact_check</span>
+                  </button>
+                  <button class="btn btn-secondary btn-icon" (click)="openEditCarrierModal(c)" title="Edit Carrier" style="width: 28px; height: 28px; padding: 0;">
+                    <span class="material-icons-round" style="font-size: 15px;">edit</span>
+                  </button>
+                  <button *ngIf="currentRole === 'Admin'" class="delete-btn" (click)="confirmDeleteCarrier(c.id, c.carrier)" title="Delete Carrier" style="width: 28px; height: 28px;">
+                    <span class="material-icons-round" style="font-size: 15px;">delete</span>
                   </button>
                 </div>
               </td>
@@ -1463,11 +2281,23 @@
           </div>
         </div>
 
-        <div class="table-header-controls" style="display: flex; align-items: center; gap: 12px;">
+        <div class="table-header-controls" style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap;">
             {{ filteredUsers.length }} of {{ usersList.length }} Items
           </span>
-          <button (click)="loadRecentUsers()" class="btn btn-secondary btn-icon" title="Refresh users list" [disabled]="isLoadingUsers" style="margin-left: 8px;">
+          <button 
+            (click)="syncUsersFromSpice()" 
+            class="btn btn-secondary" 
+            title="Synchronize user accounts from SpiceCRM to local SQLite" 
+            [disabled]="isSyncingUsers"
+            style="display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 12px; border-color: rgba(236, 72, 153, 0.4); color: #f472b6;"
+          >
+            <span class="material-icons-round" [class.spinning]="isSyncingUsers" style="font-size: 16px;">
+              {{ isSyncingUsers ? 'sync' : 'cloud_download' }}
+            </span>
+            <span>{{ isSyncingUsers ? 'Syncing...' : 'Sync From Spice' }}</span>
+          </button>
+          <button (click)="loadRecentUsers()" class="btn btn-secondary btn-icon" title="Refresh users list" [disabled]="isLoadingUsers">
             <span class="material-icons-round" [class.spinning]="isLoadingUsers">sync</span>
           </button>
         </div>
@@ -1704,6 +2534,7 @@
             <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.5;">Personalize the look and feel of the integration engine dashboard.</p>
           </div>
 
+          <!-- Interface Mode Row -->
           <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px; background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 8px;">
             <div style="display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;">Interface Mode</span>
@@ -1712,7 +2543,7 @@
               </span>
             </div>
             
-            <!-- Wired Toggle Switch -->
+            <!-- Wired Theme Toggle Switch -->
             <label class="theme-toggle-switch" style="position: relative; display: inline-block; width: 46px; height: 24px; cursor: pointer;">
               <input type="checkbox" [checked]="isDarkMode" (change)="toggleTheme()" style="opacity: 0; width: 0; height: 0;">
               <span class="theme-toggle-slider" [style.background-color]="isDarkMode ? '#6366f1' : '#94a3b8'" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; border-radius: 24px; transition: .4s; box-shadow: 0 0 8px rgba(99, 102, 241, 0.2);">
@@ -1725,10 +2556,40 @@
             </label>
           </div>
 
+          <!-- Interface Feel Row (Rounded vs Square Corners) -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px; background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;">Interface Feel</span>
+                <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 7px; border-radius: 10px; letter-spacing: 0.04em;"
+                      [style.background]="isSquareCorners ? 'rgba(139, 92, 246, 0.15)' : 'rgba(99, 102, 241, 0.15)'"
+                      [style.color]="isSquareCorners ? '#c084fc' : '#818cf8'"
+                      [style.border]="isSquareCorners ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid rgba(99, 102, 241, 0.3)'">
+                  {{ isSquareCorners ? 'Square' : 'Rounded' }}
+                </span>
+              </div>
+              <span style="font-size: 11px; color: #64748b;">
+                {{ isSquareCorners ? 'Square corners for all inputs, containers, and elements' : 'Rounded corners (default styling)' }}
+              </span>
+            </div>
+            
+            <!-- Wired Feel Toggle Switch (Rounded / Square) -->
+            <label class="theme-toggle-switch" style="position: relative; display: inline-block; width: 46px; height: 24px; cursor: pointer;" title="Toggle between rounded and square corners across the entire application">
+              <input type="checkbox" [checked]="isSquareCorners" (change)="toggleCornerStyle()" style="opacity: 0; width: 0; height: 0;">
+              <span class="theme-toggle-slider" [style.background-color]="isSquareCorners ? '#8b5cf6' : '#64748b'" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; border-radius: 24px; transition: .4s; box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);">
+                <span class="theme-toggle-knob" [style.left]="isSquareCorners ? '25px' : '3px'" style="position: absolute; content: ''; height: 18px; width: 18px; bottom: 3px; background-color: white; border-radius: 50%; transition: .4s; display: flex; align-items: center; justify-content: center;">
+                  <span class="material-icons-round" [style.color]="isSquareCorners ? '#8b5cf6' : '#475569'" style="font-size: 13px; font-weight: 700;">
+                    {{ isSquareCorners ? 'crop_square' : 'rounded_corner' }}
+                  </span>
+                </span>
+              </span>
+            </label>
+          </div>
+
           <div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.1); border-radius: 8px;">
             <span class="material-icons-round" style="color: #818cf8; font-size: 20px;">info_outline</span>
             <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
-              <strong>Note:</strong> Custom colors and gradients will adjust automatically to maintain premium high-contrast readability in your selected mode.
+              <strong>Note:</strong> Interface Mode and Feel preferences are saved to your profile and persist across sessions.
             </div>
           </div>
         </div>
@@ -1775,7 +2636,7 @@
           <div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px; background: rgba(37, 99, 235, 0.05); border: 1px solid rgba(37, 99, 235, 0.1); border-radius: 8px;">
             <span class="material-icons-round" style="color: #3b82f6; font-size: 20px;">sync_alt</span>
             <div style="font-size: 11px; color: #94a3b8; line-height: 1.5;">
-              <strong>Note:</strong> Calendar events scheduled inside Redcliffe will automatically push to Outlook when sync is active.
+              <strong>Note:</strong> Calendar events scheduled inside {{ isDemoUser ? 'Demo Financial CRM' : 'Redcliffe' }} will automatically push to Outlook when sync is active.
             </div>
           </div>
         </div>
@@ -1799,7 +2660,7 @@
               [disabled]="isSyncingBackend"
               class="btn btn-secondary"
               style="display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 8px 16px; border-color: rgba(16, 185, 129, 0.3); color: #34d399;"
-              title="Copy current SpiceCRM records (accounts, meetings, users) into SQLite"
+              title="Copy and synchronize SpiceCRM records (accounts, contacts, meetings, users, reports) into SQLite while preserving carriers and census roster data"
             >
               <span class="material-icons-round" [class.rotating-icon]="isSyncingBackend" style="font-size: 16px;">
                 {{ isSyncingBackend ? 'autorenew' : 'cloud_download' }}
@@ -1825,7 +2686,7 @@
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="font-size: 14px; font-weight: 600; color: #f8fafc;">
-                    {{ isSqliteBackend ? 'Redcliffe SQLite Engine' : 'SpiceCRM Remote Service' }}
+                    {{ isSqliteBackend ? (isDemoUser ? 'Demo Financial SQLite Engine' : 'Redcliffe SQLite Engine') : 'SpiceCRM Remote Service' }}
                   </span>
                   <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 12px; letter-spacing: 0.05em;"
                         [style.background]="isSqliteBackend ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'"
@@ -1870,25 +2731,37 @@
             </div>
           </div>
 
-          <!-- SQLite Metrics / Stats Grid (when available) -->
-          <div *ngIf="sqliteStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px;">
-            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+          <!-- SQLite Metrics / Stats Grid (all tables) -->
+          <div *ngIf="sqliteStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 12px;">
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Accounts</span>
               <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.accounts }}</span>
             </div>
-            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
-              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Individuals</span>
-              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.individuals }}</span>
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Contacts</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.contacts || sqliteStats.individuals }}</span>
             </div>
-            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Carriers</span>
+              <span style="font-size: 18px; font-weight: 700; color: #10b981;">{{ sqliteStats.carriers || 0 }}</span>
+            </div>
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Census Roster</span>
+              <span style="font-size: 18px; font-weight: 700; color: #38bdf8;">{{ sqliteStats.censusRecords || 0 }}</span>
+            </div>
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Meetings</span>
               <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.meetings }}</span>
             </div>
-            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Reports</span>
+              <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.reports || 0 }}</span>
+            </div>
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Users</span>
               <span style="font-size: 18px; font-weight: 700; color: #f8fafc;">{{ sqliteStats.users }}</span>
             </div>
-            <div style="padding: 12px 16px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="padding: 12px 14px; background: rgba(255, 255, 255, 0.015); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 8px; display: flex; flex-direction: column; gap: 4px;">
               <span style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Driver</span>
               <span style="font-size: 13px; font-weight: 600; color: #34d399;">{{ sqliteStats.driver ? (sqliteStats.driver.includes('Native') ? 'Native (C++)' : 'System CLI') : 'SQLite 3' }}</span>
             </div>
@@ -2011,7 +2884,7 @@
     <div class="dev-console-header">
       <div class="dev-title">
         <span class="material-icons-round dev-terminal-icon">terminal</span>
-        <h3>Redcliffe CRM Developer Console</h3>
+        <h3>{{ isDemoUser ? 'Demo Financial' : 'Redcliffe' }} CRM Developer Console</h3>
       </div>
       <div class="dev-header-actions">
         <!-- Live Perf Chip in Header -->
@@ -2355,15 +3228,15 @@
   </div>
 </div>
 
-<!-- Modal: Create New Individual -->
-<div class="modal-backdrop" *ngIf="showCreateIndividualModal" (click)="closeCreateIndividualModal()">
+<!-- Modal: Create New Contact -->
+<div class="modal-backdrop" *ngIf="showCreateContactModal || showCreateIndividualModal" (click)="closeCreateContactModal()">
   <div class="modal-card animate-fade-in" (click)="$event.stopPropagation()" style="max-width: 520px; padding: 24px;">
     <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 12px; margin-bottom: 20px;">
       <div style="display: flex; align-items: center; gap: 10px;">
         <span class="material-icons-round" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 8px; border-radius: 50%; font-size: 20px;">person_add</span>
-        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">New Individual</h3>
+        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">New Contact</h3>
       </div>
-      <button (click)="closeCreateIndividualModal()" class="close-modal-btn" style="background: none; border: none; color: #94a3b8; cursor: pointer;">
+      <button (click)="closeCreateContactModal()" class="close-modal-btn" style="background: none; border: none; color: #94a3b8; cursor: pointer;">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -2372,46 +3245,94 @@
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
         <div class="form-group" style="grid-column: span 2;">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Full Name *</label>
-          <input type="text" [(ngModel)]="newIndividualForm.name" placeholder="e.g. Jane Doe" class="activity-input" style="width: 100%; box-sizing: border-box;">
+          <input type="text" [(ngModel)]="newContactForm.name" placeholder="e.g. Jane Doe" class="activity-input" style="width: 100%; box-sizing: border-box;">
         </div>
         <div class="form-group">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Role / Title</label>
-          <input type="text" [(ngModel)]="newIndividualForm.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
+          <input type="text" [(ngModel)]="newContactForm.role" placeholder="e.g. Plan Administrator" class="activity-input" style="width: 100%; box-sizing: border-box;">
         </div>
         <div class="form-group">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Status</label>
-          <select [(ngModel)]="newIndividualForm.status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
+          <select [(ngModel)]="newContactForm.status" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
           </select>
         </div>
         <div class="form-group">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Email</label>
-          <input type="email" [(ngModel)]="newIndividualForm.email" placeholder="jane@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
+          <input type="email" [(ngModel)]="newContactForm.email" placeholder="jane@company.com" class="activity-input" style="width: 100%; box-sizing: border-box;">
         </div>
         <div class="form-group">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Phone</label>
-          <input type="tel" [(ngModel)]="newIndividualForm.phone" placeholder="(604) 555-0199" class="activity-input" style="width: 100%; box-sizing: border-box;">
+          <input type="tel" [(ngModel)]="newContactForm.phone" placeholder="(604) 555-0199" class="activity-input" style="width: 100%; box-sizing: border-box;">
         </div>
         <div class="form-group" style="grid-column: span 2;">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Associated Account / Organization</label>
-          <select [(ngModel)]="newIndividualForm.account_id" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
-            <option value="">-- None / Standalone Individual --</option>
+          <select [(ngModel)]="newContactForm.account_id" class="activity-input custom-select-dropdown" style="width: 100%; box-sizing: border-box; background-color: rgba(15, 23, 42, 0.8); color: #fff;">
+            <option value="">-- None / Standalone Contact --</option>
             <option *ngFor="let acc of recentAccounts" [value]="acc.id">{{ acc.name }}</option>
           </select>
         </div>
         <div class="form-group" style="grid-column: span 2;">
           <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Notes</label>
-          <textarea [(ngModel)]="newIndividualForm.notes" placeholder="Additional details..." class="activity-textarea" style="width: 100%; min-height: 60px; box-sizing: border-box;"></textarea>
+          <textarea [(ngModel)]="newContactForm.notes" placeholder="Additional details..." class="activity-textarea" style="width: 100%; min-height: 60px; box-sizing: border-box;"></textarea>
         </div>
       </div>
     </div>
 
     <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
-      <button class="btn btn-secondary" (click)="closeCreateIndividualModal()" style="padding: 8px 16px; font-size: 12px;">Cancel</button>
-      <button class="btn btn-primary" (click)="submitNewIndividual()" [disabled]="isCreatingIndividual" style="padding: 8px 20px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-        <span class="material-icons-round" style="font-size: 15px;" [class.spinning]="isCreatingIndividual">{{ isCreatingIndividual ? 'sync' : 'check' }}</span>
-        Create Individual
+      <button class="btn btn-secondary" (click)="closeCreateContactModal()" style="padding: 8px 16px; font-size: 12px;">Cancel</button>
+      <button class="btn btn-contact-action" (click)="submitNewContact()" [disabled]="isCreatingContact" style="padding: 8px 20px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+        <span class="material-icons-round" style="font-size: 15px;" [class.spinning]="isCreatingContact">{{ isCreatingContact ? 'sync' : 'check' }}</span>
+        Create Contact
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Create / Edit Carrier -->
+<div class="modal-backdrop" *ngIf="showCreateCarrierModal" (click)="closeCarrierModal()">
+  <div class="modal-card animate-fade-in" (click)="$event.stopPropagation()" style="max-width: 520px; padding: 24px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 12px; margin-bottom: 20px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span class="material-icons-round" style="background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 8px; border-radius: 50%; font-size: 20px;">
+          {{ isEditingCarrier ? 'edit' : 'health_and_safety' }}
+        </span>
+        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #f8fafc;">
+          {{ isEditingCarrier ? 'Edit Carrier' : 'Add New Carrier' }}
+        </h3>
+      </div>
+      <button (click)="closeCarrierModal()" class="close-modal-btn" style="background: none; border: none; color: #94a3b8; cursor: pointer;">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 0;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Carrier Name *</label>
+          <input type="text" [(ngModel)]="carrierModalForm.carrier" placeholder="e.g. GroupSource, ManuLife" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Client Identifier Key</label>
+          <input type="text" [(ngModel)]="carrierModalForm.clientIdentifier" placeholder="e.g. ledgerId, columnA, policyNumber" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Description</label>
+          <textarea [(ngModel)]="carrierModalForm.description" placeholder="Carrier plan offerings and administration details..." class="activity-textarea" style="width: 100%; min-height: 70px; box-sizing: border-box;"></textarea>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 10px; text-transform: uppercase; color: var(--color-text-muted); font-weight: 600; display: block; margin-bottom: 4px;">Clients (comma-separated schools or companies)</label>
+          <input type="text" [(ngModel)]="carrierModalForm.clients" placeholder="e.g. St. Jude Academy, Westmount Collegiate, Oakridge Prep" class="activity-input" style="width: 100%; box-sizing: border-box;">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid var(--glass-border); padding-top: 16px;">
+      <button class="btn btn-secondary" (click)="closeCarrierModal()" style="padding: 8px 16px; font-size: 12px;">Cancel</button>
+      <button class="btn btn-primary" (click)="saveCarrier()" [disabled]="isCreatingCarrier" style="padding: 8px 20px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+        <span class="material-icons-round" style="font-size: 15px;" [class.spinning]="isCreatingCarrier">{{ isCreatingCarrier ? 'sync' : 'check' }}</span>
+        {{ isEditingCarrier ? 'Save Changes' : 'Create Carrier' }}
       </button>
     </div>
   </div>
@@ -2564,7 +3485,7 @@
               <td *ngFor="let col of activeReportData?.columns" class="report-cell">
                 <div class="cell-wrapper">
                   <span [class.entity-link]="col.label.includes('NAME') || col.label.includes('ACCOUNT')">
-                    {{ row[col.label] || '—' }}
+                    {{ formatReportCellValue(row, col) }}
                   </span>
                   <span *ngIf="(col.label.includes('NAME') || col.label.includes('ACCOUNT')) && (row['_module'] === 'Accounts' || row['ACCOUNT NAME'])" class="material-icons-round drill-down-icon" style="font-size: 13px;">launch</span>
                 </div>
@@ -2639,6 +3560,132 @@
           <span>Save Preferences</span>
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Census Roster Verification Modal -->
+<div class="census-roster-modal" *ngIf="showCensusRosterModal" (click)="closeCensusRosterModal()">
+  <div class="census-roster-container" (click)="$event.stopPropagation()">
+    <!-- Modal Header -->
+    <div class="census-roster-header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span class="material-icons-round" style="color: #38bdf8; font-size: 26px; padding: 6px; border-radius: 8px; background: rgba(56, 189, 248, 0.12);">fact_check</span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2 style="font-size: 17px; font-weight: 700; margin: 0; color: #f8fafc;">
+              {{ censusRosterCarrier || 'Carrier' }} Census Roster
+            </h2>
+            <span class="role-badge-borderless" style="font-size: 11px; padding: 2px 8px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; border-radius: 12px;">
+              {{ filteredCensusRosterRecords.length }} Records
+            </span>
+          </div>
+          <p style="font-size: 12px; color: #94a3b8; margin: 2px 0 0 0;">
+            Imported plan members, benefit coverages, and dependents enrolled in SQLite
+          </p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="position: relative; width: 280px;">
+          <span class="material-icons-round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 17px; color: #64748b;">search</span>
+          <input 
+            type="text" 
+            [(ngModel)]="censusRosterSearchQuery" 
+            placeholder="Search roster by Name, Cert #..." 
+            class="activity-input" 
+            style="width: 100%; padding-left: 32px; box-sizing: border-box; font-size: 12px; height: 34px;"
+          >
+        </div>
+        <button (click)="viewInContactsTable()" class="btn btn-primary" style="padding: 7px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+          <span class="material-icons-round" style="font-size: 15px;">contacts</span>
+          View in Contacts
+        </button>
+        <button (click)="closeCensusRosterModal()" class="column-picker-close-btn" title="Close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="census-roster-body">
+      <div *ngIf="isLoadingCensusRoster" style="text-align: center; padding: 40px; color: #94a3b8;">
+        <span class="material-icons-round spin" style="font-size: 28px; color: #38bdf8;">autorenew</span>
+        <p style="margin-top: 8px; font-size: 13px;">Loading census records from database...</p>
+      </div>
+
+      <div *ngIf="!isLoadingCensusRoster && filteredCensusRosterRecords.length === 0" style="text-align: center; padding: 60px 20px; color: #64748b;">
+        <span class="material-icons-round" style="font-size: 36px; opacity: 0.5;">folder_off</span>
+        <p style="margin-top: 8px; font-size: 14px; font-weight: 500;">No census records found</p>
+      </div>
+
+      <table *ngIf="!isLoadingCensusRoster && filteredCensusRosterRecords.length > 0" class="accounts-table" style="width: 100%;">
+        <thead>
+          <tr>
+            <th style="width: 70px;">Cert #</th>
+            <th>Member Name</th>
+            <th>Organization</th>
+            <th>Policy / Class</th>
+            <th>Status</th>
+            <th>Monthly Prem</th>
+            <th>Coverages</th>
+            <th>Dependents</th>
+            <th style="text-align: right; width: 100px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let rec of filteredCensusRosterRecords" class="account-row">
+            <td style="font-weight: 700; color: #38bdf8;">#{{ rec.certificate_number }}</td>
+            <td class="cell-name">
+              <span class="material-icons-round avatar" style="background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-size: 16px; width: 24px; height: 24px;">person</span>
+              <span class="name-text" style="font-weight: 600;">{{ rec.employee_name }}</span>
+            </td>
+            <td>
+              <span style="display: inline-flex; align-items: center; gap: 4px; color: #f8fafc; font-size: 12px;">
+                <span class="material-icons-round" style="font-size: 14px; color: #10b981;">business</span>
+                {{ rec.account_name || 'Mulgrave School' }}
+              </span>
+            </td>
+            <td>
+              <span style="font-size: 11px; color: #94a3b8;">
+                {{ rec.policy_number || '101' }}
+              </span>
+            </td>
+            <td>
+              <span class="status-badge" [ngClass]="{
+                'status-held': (rec.status || '').toLowerCase() === 'active' || !rec.status,
+                'status-terminated': (rec.status || '').toLowerCase().includes('term') || (rec.status || '').toLowerCase() === 'inactive'
+              }" style="padding: 2px 8px; font-size: 11px;">
+                {{ rec.status || 'Active' }}
+              </span>
+            </td>
+            <td style="font-weight: 600; color: #f8fafc;">
+              {{ getRecordPremium(rec) }}
+            </td>
+            <td>
+              <div style="display: flex; flex-wrap: wrap; gap: 4px; max-width: 320px;">
+                <span *ngFor="let b of rec.benefits" class="coverage-badge" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8;" [title]="b.benefitName + (b.coverageAmount ? ' ($' + b.coverageAmount + ')' : '')">
+                  {{ b.benefitCode }}{{ b.coverageType ? ' (' + b.coverageType + ')' : '' }}
+                </span>
+                <span *ngIf="!rec.benefits || rec.benefits.length === 0" style="color: #64748b; font-size: 11px;">No coverages</span>
+              </div>
+            </td>
+            <td>
+              <span *ngIf="rec.dependents && rec.dependents.length > 0" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #c4b5fd; background: rgba(139, 92, 246, 0.12); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.25);">
+                <span class="material-icons-round" style="font-size: 13px;">family_restroom</span>
+                {{ rec.dependents.length }}
+              </span>
+              <span *ngIf="!rec.dependents || rec.dependents.length === 0" style="color: #64748b; font-size: 11px;">0</span>
+            </td>
+            <td style="text-align: right;">
+              <button (click)="viewInContactsTable(rec.employee_name)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" title="View in Contacts">
+                <span class="material-icons-round" style="font-size: 13px;">open_in_new</span>
+                Profile
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

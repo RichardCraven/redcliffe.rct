@@ -5,6 +5,7 @@ const { parse } = require('csv-parse');
 const crypto = require('crypto');
 const db = require('./db');
 const sqliteDb = require('./sqlite_db');
+const { parseCarrierCensus, CARRIER_SPECIFICATIONS } = require('./census_parser');
 require('dotenv').config();
 
 const app = express();
@@ -68,6 +69,19 @@ async function authenticate() {
 
 const activeUserSessions = new Map();
 
+// Restore persisted active sessions from database on startup
+try {
+  const savedSessions = sqliteDb.getAllUserSessions();
+  for (const s of savedSessions) {
+    activeUserSessions.set(s.token, { username: s.username, name: s.name, isDemo: Boolean(s.isDemo) });
+  }
+  if (savedSessions.length > 0) {
+    console.log(`[BACKEND] Restored ${savedSessions.length} active sessions from database.`);
+  }
+} catch (err) {
+  console.warn('[BACKEND] Warning restoring active sessions:', err.message);
+}
+
 // Middleware to ensure the user has a valid active session
 function ensureUserSession(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -75,12 +89,23 @@ function ensureUserSession(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
   }
   const token = authHeader.split(' ')[1];
-  const sessionUser = activeUserSessions.get(token);
+  let sessionUser = activeUserSessions.get(token);
+  if (!sessionUser) {
+    sessionUser = sqliteDb.getUserSession(token);
+    if (sessionUser) {
+      activeUserSessions.set(token, sessionUser);
+    }
+  }
   if (!sessionUser) {
     return res.status(401).json({ error: 'Unauthorized: Session expired or invalid' });
   }
   req.sessionUser = sessionUser;
-  next();
+  const isDemo = sessionUser.username?.toLowerCase() === 'test' || Boolean(sessionUser.isDemo);
+  req.isDemo = isDemo;
+
+  sqliteDb.runInContext({ isDemo }, () => {
+    next();
+  });
 }
 
 // Middleware to ensure token is valid and set
@@ -105,6 +130,31 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
+  // 0. Demo interview login shortcut
+  if (username.trim().toLowerCase() === 'test' && password === 'test') {
+    const token = crypto.randomBytes(32).toString('hex');
+    const displayName = 'Alex Morgan (Demo Admin)';
+    const sessionObj = {
+      username: 'test',
+      name: displayName,
+      isDemo: true
+    };
+    activeUserSessions.set(token, sessionObj);
+    sqliteDb.saveUserSession(token, sessionObj, true);
+
+    console.log('[BACKEND] ✓ Authenticated DEMO user "test" with isolated dummy database.');
+    return res.json({ 
+      success: true, 
+      token, 
+      backend: 'sqlite',
+      user: {
+        username: 'test',
+        name: displayName,
+        is_demo: true
+      } 
+    });
+  }
+
   // 1. First attempt: Authenticate against SpiceCRM
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
   try {
@@ -124,8 +174,40 @@ app.post('/api/login', async (req, res) => {
         username,
         name: displayName
       });
+      sqliteDb.saveUserSession(token, {
+        username,
+        name: displayName
+      });
 
       console.log(`[BACKEND] ✓ Authenticated user "${username}" via SpiceCRM.`);
+
+      // Auto-sync / cache user in local SQLite store with hashed password for offline fallback
+      try {
+        const cleanUser = username.trim().toLowerCase();
+        const existing = sqliteDb.getUserByUsernameOrEmail(cleanUser);
+        if (existing) {
+          sqliteDb.updateUserPassword(existing.id, password);
+        } else {
+          sqliteDb.syncFromSpice({
+            users: [{
+              id: data.id || crypto.randomUUID(),
+              user_name: cleanUser,
+              first_name: data.first_name || '',
+              last_name: data.last_name || '',
+              email1: data.email || data.email1 || '',
+              status: 'Active',
+              is_admin: data.is_admin ? 1 : 0
+            }]
+          });
+          const added = sqliteDb.getUserByUsernameOrEmail(cleanUser);
+          if (added) {
+            sqliteDb.updateUserPassword(added.id, password);
+          }
+        }
+      } catch (cacheErr) {
+        console.warn('[BACKEND] Could not auto-sync user credentials to SQLite:', cacheErr.message);
+      }
+
       return res.json({ 
         success: true, 
         token, 
@@ -146,6 +228,10 @@ app.post('/api/login', async (req, res) => {
       const token = crypto.randomBytes(32).toString('hex');
       const displayName = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name;
       activeUserSessions.set(token, {
+        username: user.user_name,
+        name: displayName
+      });
+      sqliteDb.saveUserSession(token, {
         username: user.user_name,
         name: displayName
       });
@@ -174,6 +260,7 @@ app.post('/api/logout', (req, res) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
     activeUserSessions.delete(token);
+    sqliteDb.deleteUserSession(token);
   }
   res.json({ success: true });
 });
@@ -453,7 +540,8 @@ app.get('/api/backend/config', ensureUserSession, (req, res) => {
       success: true,
       mode,
       available: ['spice', 'sqlite'],
-      stats
+      stats,
+      is_demo: Boolean(req.isDemo)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -475,42 +563,62 @@ app.post('/api/backend/config', ensureUserSession, (req, res) => {
   }
 });
 
-// Sync data from SpiceCRM into SQLite
-app.post('/api/backend/sync-spice', ensureUserSession, ensureAuthenticated, async (req, res) => {
+// Sync data from SpiceCRM into SQLite (comprehensive non-destructive multi-table sync)
+app.post('/api/backend/sync-spice', ensureUserSession, async (req, res) => {
   try {
     console.log('[BACKEND] 📥 Syncing records from SpiceCRM to local SQLite...');
-    const accRes = await fetch(`${spiceCrmUrl}/module/Accounts?limit=500&fields=id,name,email1,website,industry,description,shipping_address_city,shipping_address_state,account_type,date_entered`, {
-      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
-    });
-    const accData = accRes.ok ? await accRes.json() : { list: [] };
 
-    const mtgRes = await fetch(`${spiceCrmUrl}/module/Meetings?limit=500`, {
-      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
-    });
-    const mtgData = mtgRes.ok ? await mtgRes.json() : { list: [] };
+    // Always ensure a valid SpiceCRM session token regardless of active local backend mode
+    if (!sessionToken) {
+      try {
+        await authenticate();
+      } catch (authErr) {
+        console.error('[BACKEND ERROR] Authentication failed with SpiceCRM:', authErr.message);
+        return res.status(502).json({ error: 'Could not authenticate with remote SpiceCRM: ' + authErr.message });
+      }
+    }
 
-    const usrRes = await fetch(`${spiceCrmUrl}/module/Users?limit=100`, {
-      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
-    });
-    const usrData = usrRes.ok ? await usrRes.json() : { list: [] };
-
-    let repList = [];
-    try {
-      const repRes = await fetch(`${spiceCrmUrl}/module/KReports?limit=100`, {
+    // Helper fetcher with automatic 401 re-authentication
+    const fetchSpiceModule = async (endpoint) => {
+      let response = await fetch(`${spiceCrmUrl}/${endpoint}`, {
         headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
       });
-      if (repRes.ok) {
-        const repData = await repRes.json();
-        repList = repData.list || [];
+      if (response.status === 401) {
+        console.log(`[BACKEND] Token expired fetching ${endpoint}, re-authenticating...`);
+        await authenticate();
+        response = await fetch(`${spiceCrmUrl}/${endpoint}`, {
+          headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+        });
       }
-    } catch (_) {}
+      if (!response.ok) {
+        console.warn(`[BACKEND] SpiceCRM fetch ${endpoint} returned status ${response.status}`);
+        return { list: [] };
+      }
+      return await response.json();
+    };
+
+    // 1. Fetch Accounts (all accounts with all fields, limit 1000)
+    const accData = await fetchSpiceModule('module/Accounts?limit=1000');
+
+    // 2. Fetch Contacts (plan administrators, executives, contacts, limit 1000)
+    const conData = await fetchSpiceModule('module/Contacts?limit=1000');
+
+    // 3. Fetch Meetings (limit 500)
+    const mtgData = await fetchSpiceModule('module/Meetings?limit=500');
+
+    // 4. Fetch Users (limit 500)
+    const usrData = await fetchSpiceModule('module/Users?limit=500');
+
+    // 5. Fetch KReports (limit 500)
+    const repData = await fetchSpiceModule('module/KReports?limit=500');
 
     const localDb = db.loadDb();
     const syncResults = sqliteDb.syncFromSpice({
       accounts: accData.list || [],
+      contacts: conData.list || [],
       meetings: mtgData.list || [],
       users: usrData.list || [],
-      reports: repList,
+      reports: repData.list || [],
       customFields: localDb.account_custom_fields || {}
     });
 
@@ -529,10 +637,11 @@ app.get('/api/status', ensureUserSession, async (req, res) => {
     return res.json({
       status: 'connected',
       backend: 'sqlite',
-      label: 'SQLite DB',
-      crmUrl: 'SQLite Local',
+      label: req.isDemo ? 'Demo Financial DB' : 'SQLite DB',
+      crmUrl: req.isDemo ? 'Demo Local Engine' : 'SQLite Local',
       authenticated: true,
-      stats
+      stats,
+      is_demo: Boolean(req.isDemo)
     });
   }
 
@@ -599,6 +708,7 @@ app.get('/api/accounts', ensureUserSession, ensureAuthenticated, async (req, res
           const custom = db.getAccountCustomFields(acc.id);
           return {
             ...acc,
+            description: sqliteDb.cleanDescription(acc.description),
             account_type: acc.account_type || custom.account_type,
             group_benefits: custom.group_benefits,
             plan_admin: custom.plan_admin,
@@ -622,6 +732,7 @@ app.get('/api/accounts', ensureUserSession, ensureAuthenticated, async (req, res
         const custom = db.getAccountCustomFields(acc.id);
         return {
           ...acc,
+          description: sqliteDb.cleanDescription(acc.description),
           account_type: acc.account_type || custom.account_type,
           group_benefits: custom.group_benefits,
           plan_admin: custom.plan_admin,
@@ -669,6 +780,7 @@ app.get('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req,
       const data = await retryResponse.json();
       if (data && data.id) {
         const custom = db.getAccountCustomFields(data.id);
+        data.description = sqliteDb.cleanDescription(data.description);
         data.account_type = data.account_type || custom.account_type;
         data.group_benefits = custom.group_benefits;
         data.plan_admin = custom.plan_admin;
@@ -687,6 +799,7 @@ app.get('/api/accounts/:id', ensureUserSession, ensureAuthenticated, async (req,
     const data = await response.json();
     if (data && data.id) {
       const custom = db.getAccountCustomFields(data.id);
+      data.description = sqliteDb.cleanDescription(data.description);
       data.account_type = data.account_type || custom.account_type;
       data.group_benefits = custom.group_benefits;
       data.plan_admin = custom.plan_admin;
@@ -715,51 +828,43 @@ app.patch('/api/accounts/:id/custom-fields', ensureUserSession, async (req, res)
   }
 });
 
-// ==================== INDIVIDUALS REST API ====================
+// ==================== CONTACTS REST API ====================
 
-// Endpoint to fetch all individuals (supports optional ?accountId=... and ?search=...)
-app.get('/api/individuals', ensureUserSession, (req, res) => {
+const handleGetAllContacts = (req, res) => {
   try {
     const { accountId, search } = req.query;
-    if (sqliteDb.getBackendMode() === 'sqlite') {
-      const list = sqliteDb.getAllIndividuals({ accountId, search });
+    // SQLite is the canonical database for contacts and census data
+    const list = (sqliteDb.getAllContacts ? sqliteDb.getAllContacts({ accountId, search }) : sqliteDb.getAllIndividuals({ accountId, search }));
+    if (list && list.length > 0) {
       return res.json({ list });
     }
-    const list = db.getAllIndividuals({ accountId, search });
-    res.json({ list });
+    const fallbackList = (db.getAllContacts ? db.getAllContacts({ accountId, search }) : db.getAllIndividuals({ accountId, search }));
+    res.json({ list: fallbackList });
   } catch (err) {
-    console.error('[BACKEND ERROR] Failed to fetch individuals:', err.message);
+    console.error('[BACKEND ERROR] Failed to fetch contacts:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
 
-// Endpoint to fetch a single individual
-app.get('/api/individuals/:id', ensureUserSession, (req, res) => {
+const handleGetContactById = (req, res) => {
   try {
-    if (sqliteDb.getBackendMode() === 'sqlite') {
-      const individual = sqliteDb.getIndividualById(req.params.id);
-      if (!individual) return res.status(404).json({ error: 'Individual not found' });
-      return res.json(individual);
-    }
-    const individual = db.getIndividualById(req.params.id);
-    if (!individual) {
-      return res.status(404).json({ error: 'Individual not found' });
-    }
-    res.json(individual);
+    const contact = (sqliteDb.getContactById ? sqliteDb.getContactById(req.params.id) : sqliteDb.getIndividualById(req.params.id)) ||
+                    (db.getContactById ? db.getContactById(req.params.id) : db.getIndividualById(req.params.id));
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+    return res.json(contact);
   } catch (err) {
-    console.error(`[BACKEND ERROR] Failed to fetch individual ${req.params.id}:`, err.message);
+    console.error(`[BACKEND ERROR] Failed to fetch contact ${req.params.id}:`, err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
 
-// Endpoint to create an individual
-app.post('/api/individuals', ensureUserSession, (req, res) => {
+const handleCreateContact = (req, res) => {
   try {
     const { name, email, phone, role, account_id, account_name, notes, status } = req.body;
     if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Individual name is required' });
+      return res.status(400).json({ error: 'Contact name is required' });
     }
-    const created = db.createIndividual({
+    const created = (db.createContact ? db.createContact : db.createIndividual)({
       name,
       email,
       phone,
@@ -769,41 +874,77 @@ app.post('/api/individuals', ensureUserSession, (req, res) => {
       notes,
       status: status || 'Active'
     });
-    sqliteDb.createIndividual(created);
+    if (sqliteDb.createContact) {
+      sqliteDb.createContact(created);
+    } else {
+      sqliteDb.createIndividual(created);
+    }
     res.status(201).json(created);
   } catch (err) {
-    console.error('[BACKEND ERROR] Failed to create individual:', err.message);
+    console.error('[BACKEND ERROR] Failed to create contact:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
 
-// Endpoint to update an individual
-app.patch('/api/individuals/:id', ensureUserSession, (req, res) => {
+const handleUpdateContact = (req, res) => {
   try {
-    const updated = db.updateIndividual(req.params.id, req.body);
+    const updated = (db.updateContact ? db.updateContact(req.params.id, req.body) : db.updateIndividual(req.params.id, req.body));
     if (!updated) {
-      return res.status(404).json({ error: 'Individual not found' });
+      return res.status(404).json({ error: 'Contact not found' });
     }
-    sqliteDb.updateIndividual(req.params.id, req.body);
+    if (sqliteDb.updateContact) {
+      sqliteDb.updateContact(req.params.id, req.body);
+    } else {
+      sqliteDb.updateIndividual(req.params.id, req.body);
+    }
     res.json(updated);
   } catch (err) {
-    console.error(`[BACKEND ERROR] Failed to update individual ${req.params.id}:`, err.message);
+    console.error(`[BACKEND ERROR] Failed to update contact ${req.params.id}:`, err.message);
     res.status(500).json({ error: err.message });
   }
-});
+};
 
-// Endpoint to delete an individual
-app.delete('/api/individuals/:id', ensureUserSession, (req, res) => {
+const handleDeleteContact = (req, res) => {
   try {
-    const deleted = db.deleteIndividual(req.params.id);
+    const deleted = (db.deleteContact ? db.deleteContact(req.params.id) : db.deleteIndividual(req.params.id));
     if (!deleted) {
-      return res.status(404).json({ error: 'Individual not found' });
+      return res.status(404).json({ error: 'Contact not found' });
     }
-    sqliteDb.deleteIndividual(req.params.id);
-    res.json({ success: true, message: 'Individual deleted successfully' });
+    if (sqliteDb.deleteContact) {
+      sqliteDb.deleteContact(req.params.id);
+    } else {
+      sqliteDb.deleteIndividual(req.params.id);
+    }
+    res.json({ success: true, message: 'Contact deleted successfully' });
   } catch (err) {
-    console.error(`[BACKEND ERROR] Failed to delete individual ${req.params.id}:`, err.message);
+    console.error(`[BACKEND ERROR] Failed to delete contact ${req.params.id}:`, err.message);
     res.status(500).json({ error: err.message });
+  }
+};
+
+app.get('/api/contacts', ensureUserSession, handleGetAllContacts);
+app.get('/api/contacts/:id', ensureUserSession, handleGetContactById);
+app.post('/api/contacts', ensureUserSession, handleCreateContact);
+app.patch('/api/contacts/:id', ensureUserSession, handleUpdateContact);
+app.delete('/api/contacts/:id', ensureUserSession, handleDeleteContact);
+
+// Backward-compatibility aliases for individuals endpoint
+app.get('/api/individuals', ensureUserSession, handleGetAllContacts);
+app.get('/api/individuals/:id', ensureUserSession, handleGetContactById);
+app.post('/api/individuals', ensureUserSession, handleCreateContact);
+app.patch('/api/individuals/:id', ensureUserSession, handleUpdateContact);
+app.delete('/api/individuals/:id', ensureUserSession, handleDeleteContact);
+
+// ==================== GLOBAL SEARCH API ====================
+app.get('/api/global-search', ensureUserSession, (req, res) => {
+  try {
+    const query = req.query.q || req.query.query || '';
+    const limit = parseInt(req.query.limit, 10) || 8;
+    const results = sqliteDb.globalSearch(query, limit);
+    res.json(results);
+  } catch (err) {
+    console.error('[BACKEND ERROR] Global search failed:', err.message);
+    res.status(500).json({ error: err.message, query: '', total: 0, categories: [] });
   }
 });
 
@@ -812,7 +953,7 @@ app.delete('/api/individuals/:id', ensureUserSession, (req, res) => {
 // Endpoint to get user preferences
 app.get('/api/user/preferences', ensureUserSession, (req, res) => {
   try {
-    const username = req.session?.username || 'admin';
+    const username = req.sessionUser?.username || req.session?.username || 'admin';
     if (sqliteDb.getBackendMode() === 'sqlite') {
       const prefs = sqliteDb.getUserPreferences(username) || {};
       return res.json({ success: true, preferences: prefs });
@@ -828,7 +969,7 @@ app.get('/api/user/preferences', ensureUserSession, (req, res) => {
 // Endpoint to update user preferences
 app.post('/api/user/preferences', ensureUserSession, (req, res) => {
   try {
-    const username = req.session?.username || 'admin';
+    const username = req.sessionUser?.username || req.session?.username || 'admin';
     const { preferences } = req.body;
     sqliteDb.saveUserPreferences(username, preferences || {});
     const saved = db.saveUserPreferences(username, preferences || {});
@@ -1015,6 +1156,37 @@ app.get('/api/users', ensureUserSession, ensureAuthenticated, async (req, res) =
   }
 });
 
+// Sync Users only from SpiceCRM into SQLite
+app.post('/api/users/sync', ensureUserSession, async (req, res) => {
+  try {
+    console.log('[BACKEND] 📥 Syncing users from SpiceCRM to local SQLite...');
+    if (!sessionToken) {
+      await authenticate();
+    }
+    let response = await fetch(`${spiceCrmUrl}/module/Users?limit=500`, {
+      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+    });
+    if (response.status === 401 || response.status === 403) {
+      await authenticate();
+      response = await fetch(`${spiceCrmUrl}/module/Users?limit=500`, {
+        headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+      });
+    }
+    if (!response.ok) {
+      return res.status(502).json({ error: 'Failed to fetch users from SpiceCRM' });
+    }
+    const data = await response.json();
+    const usersList = data.list || [];
+    const syncResults = sqliteDb.syncFromSpice({ users: usersList });
+    console.log(`[BACKEND] ✓ Synchronized ${syncResults.users} SpiceCRM users into SQLite.`);
+    const updatedUsers = sqliteDb.getAllUsers(100);
+    res.json({ success: true, count: syncResults.users, list: updatedUsers });
+  } catch (err) {
+    console.error('[BACKEND ERROR] Sync users failed:', err.message);
+    res.status(500).json({ error: 'Sync users failed: ' + err.message });
+  }
+});
+
 // Endpoint to fetch reports from SpiceCRM or SQLite
 app.get('/api/reports', ensureUserSession, ensureAuthenticated, async (req, res) => {
   const limit = req.query.limit || 100;
@@ -1106,35 +1278,87 @@ app.get('/api/reports/:id/data', ensureUserSession, ensureAuthenticated, async (
   const { id } = req.params;
 
   if (sqliteDb.getBackendMode() === 'sqlite') {
-    const report = sqliteDb.queryOneSql(`SELECT * FROM reports WHERE id = ${sqliteDb.escapeSql(id)}`);
+    const report = sqliteDb.getReportById(id);
     const reportModule = report ? (report.report_module || 'Accounts') : 'Accounts';
     const reportName = report ? report.name : 'Report Results';
 
     let records = [];
     let columns = [];
     if (reportModule.toLowerCase() === 'contacts') {
-      const contacts = sqliteDb.getAllContacts ? sqliteDb.getAllContacts(50) : [];
+      const contacts = sqliteDb.getAllContacts ? sqliteDb.getAllContacts() : (sqliteDb.getAllIndividuals ? sqliteDb.getAllIndividuals() : []);
       columns = [
-        { fieldid: 'first_name', label: 'FIRST NAME', fieldname: 'first_name' },
-        { fieldid: 'last_name', label: 'LAST NAME', fieldname: 'last_name' },
+        { fieldid: 'name', label: 'FULL NAME', fieldname: 'name' },
+        { fieldid: 'account_name', label: 'ORGANIZATION / ACCOUNT', fieldname: 'account_name' },
+        { fieldid: 'role', label: 'ROLE / CLASSIFICATION', fieldname: 'role' },
+        { fieldid: 'status', label: 'STATUS', fieldname: 'status' },
         { fieldid: 'email', label: 'EMAIL', fieldname: 'email' },
-        { fieldid: 'balance', label: 'BALANCE', fieldname: 'balance' }
+        { fieldid: 'phone', label: 'PHONE', fieldname: 'phone' }
       ];
-      records = (contacts || []).map(c => ({
-        _id: c.id,
-        _module: 'Contacts',
-        'FIRST NAME': c.first_name || c.name || 'John',
-        'LAST NAME': c.last_name || 'Doe',
-        'EMAIL': c.email || '',
-        'BALANCE': c.balance || '500'
-      }));
+      records = (contacts || []).slice(0, 100).map(c => {
+        let phoneDisplay = '—';
+        if (c.phone && typeof c.phone === 'string') {
+          const ph = c.phone.trim();
+          if (!ph.includes(',') && !/\b(BC|AB|ON|QC|MB|SK|NB|NS|PE|NL|VANCOUVER|VICTORIA|BURNABY)\b/i.test(ph) && (ph.match(/\d/g) || []).length >= 7) {
+            phoneDisplay = ph;
+          }
+        }
+        return {
+          _id: c.id,
+          _module: 'Contacts',
+          'FULL NAME': c.name || 'Unnamed',
+          'ORGANIZATION / ACCOUNT': c.account_name || 'Contact Record',
+          'ROLE / CLASSIFICATION': c.role || 'Plan Member',
+          'STATUS': c.status || 'Active',
+          'EMAIL': c.email || '—',
+          'PHONE': phoneDisplay
+        };
+      });
+    } else if (reportModule.toLowerCase() === 'meetings') {
+      const meetings = sqliteDb.getAllMeetings ? sqliteDb.getAllMeetings(50) : [];
+      columns = [
+        { fieldid: 'name', label: 'MEETING TITLE', fieldname: 'name' },
+        { fieldid: 'date_start', label: 'START DATE', fieldname: 'date_start' },
+        { fieldid: 'status', label: 'STATUS', fieldname: 'status' },
+        { fieldid: 'parent_name', label: 'CLIENT ACCOUNT', fieldname: 'parent_name' },
+        { fieldid: 'assigned_user_name', label: 'ORGANIZER', fieldname: 'assigned_user_name' }
+      ];
+      records = (meetings || []).map(m => {
+        let organizer = m.assigned_user_name;
+        if (!organizer || organizer === '[object Object]' || typeof organizer === 'object') {
+          if (typeof organizer === 'object' && organizer !== null) {
+            organizer = organizer.name || organizer.value || organizer.user_name || null;
+          }
+          if (!organizer || organizer === '[object Object]') {
+            if (m.assigned_user_id) {
+              const user = (sqliteDb.getUserById ? sqliteDb.getUserById(m.assigned_user_id) : null) || (db.getUserById ? db.getUserById(m.assigned_user_id) : null);
+              if (user) {
+                const full = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                organizer = full || user.name || user.user_name || 'Administrator';
+              }
+            }
+          }
+          if (!organizer || organizer === '[object Object]') {
+            organizer = 'Administrator';
+          }
+        }
+        return {
+          _id: m.id,
+          _module: 'Meetings',
+          'MEETING TITLE': m.name || 'Untitled Meeting',
+          'START DATE': m.date_start || '',
+          'STATUS': m.status || 'Planned',
+          'CLIENT ACCOUNT': m.parent_name || '—',
+          'ORGANIZER': organizer
+        };
+      });
     } else {
       const accounts = sqliteDb.getAllAccounts(50);
       columns = [
         { fieldid: 'name', label: 'ACCOUNT NAME', fieldname: 'name' },
         { fieldid: 'industry', label: 'INDUSTRY', fieldname: 'industry' },
         { fieldid: 'account_type', label: 'ACCOUNT TYPE', fieldname: 'account_type' },
-        { fieldid: 'phone_office', label: 'PHONE', fieldname: 'phone_office' }
+        { fieldid: 'renewal_date', label: 'RENEWAL DATE', fieldname: 'renewal_date' },
+        { fieldid: 'carrier_tpa', label: 'CARRIER / TPA', fieldname: 'carrier_tpa' }
       ];
       records = (accounts || []).map(a => ({
         _id: a.id,
@@ -1142,7 +1366,8 @@ app.get('/api/reports/:id/data', ensureUserSession, ensureAuthenticated, async (
         'ACCOUNT NAME': a.name || 'Unnamed',
         'INDUSTRY': a.industry || 'Financial',
         'ACCOUNT TYPE': a.account_type || 'Customer',
-        'PHONE': a.phone_office || ''
+        'RENEWAL DATE': a.renewal_date || '—',
+        'CARRIER / TPA': a.carrier_tpa || '—'
       }));
     }
 
@@ -1271,7 +1496,40 @@ app.get('/api/reports/:id/export/csv', ensureUserSession, ensureAuthenticated, a
     let csvData = null;
     let reportName = `Report_${id}`;
 
-    if (sqliteDb.getBackendMode() !== 'sqlite') {
+    if (sqliteDb.getBackendMode() === 'sqlite') {
+      const report = sqliteDb.getReportById(id);
+      reportName = report ? report.name : `Report_${id}`;
+      const reportModule = report ? (report.report_module || 'Accounts') : 'Accounts';
+
+      let headers = [];
+      let rows = [];
+
+      if (reportModule.toLowerCase() === 'contacts') {
+        const ind = sqliteDb.getAllContacts ? sqliteDb.getAllContacts() : (sqliteDb.getAllIndividuals ? sqliteDb.getAllIndividuals() : []);
+        headers = ['Full Name', 'Organization / Account', 'Role / Classification', 'Status', 'Email', 'Phone'];
+        rows = ind.map(c => {
+          let ph = (c.phone || '').trim();
+          if (ph.includes(',') || /\b(BC|AB|ON|QC|MB|SK|NB|NS|PE|NL|VANCOUVER|VICTORIA|BURNABY)\b/i.test(ph) || (ph.match(/\d/g) || []).length < 7) {
+            ph = '';
+          }
+          return [c.name, c.account_name, c.role, c.status, c.email, ph];
+        });
+      } else if (reportModule.toLowerCase() === 'meetings') {
+        const mtg = sqliteDb.getAllMeetings ? sqliteDb.getAllMeetings(100) : [];
+        headers = ['Meeting Title', 'Start Date', 'Status', 'Client Account', 'Organizer'];
+        rows = mtg.map(m => [m.name, m.date_start, m.status, m.parent_name, m.assigned_user_name]);
+      } else {
+        const acc = sqliteDb.getAllAccounts(100);
+        headers = ['Account Name', 'Industry', 'Account Type', 'Renewal Date', 'Carrier / TPA'];
+        rows = acc.map(a => [a.name, a.industry, a.account_type, a.renewal_date, a.carrier_tpa]);
+      }
+
+      const csvLines = [headers.map(h => `"${h}"`).join(',')];
+      for (const row of rows) {
+        csvLines.push(row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','));
+      }
+      csvData = csvLines.join('\n');
+    } else {
       // Try native KReports CSV export plugin first
       let exportRes = await fetch(`${spiceCrmUrl}/module/KReports/plugins/action/kcsvexport/export`, {
         method: 'POST',
@@ -1303,16 +1561,16 @@ app.get('/api/reports/:id/export/csv', ensureUserSession, ensureAuthenticated, a
       if (exportRes.ok) {
         csvData = await exportRes.text();
       }
-    }
 
-    // Fallback if native plugin didn't return CSV or in sqlite mode
-    if (!csvData) {
-      let defRes = await fetch(`${spiceCrmUrl}/module/KReports/${id}`, {
-        headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
-      });
-      if (defRes.ok) {
-        const repDef = await defRes.json();
-        reportName = repDef.name || reportName;
+      // Fallback if native plugin didn't return CSV
+      if (!csvData) {
+        let defRes = await fetch(`${spiceCrmUrl}/module/KReports/${id}`, {
+          headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+        });
+        if (defRes.ok) {
+          const repDef = await defRes.json();
+          reportName = repDef.name || reportName;
+        }
       }
     }
 
@@ -1634,6 +1892,140 @@ async function performBulkDelete(accounts, res) {
   res.json({ success: true, deleted: successCount, failed: failCount });
 }
 
+// ==========================================
+// CARRIERS REST API ROUTES
+// ==========================================
+
+// Get all carriers
+app.get('/api/carriers', ensureUserSession, (req, res) => {
+  try {
+    const search = req.query.search || '';
+    const list = sqliteDb.getAllCarriers(search);
+    res.json({ total: list.length, list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get carrier by id
+app.get('/api/carriers/:id', ensureUserSession, (req, res) => {
+  try {
+    const carrier = sqliteDb.getCarrierById(req.params.id);
+    if (!carrier) return res.status(404).json({ error: 'Carrier not found' });
+    res.json(carrier);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create new carrier
+app.post('/api/carriers', ensureUserSession, (req, res) => {
+  try {
+    const { carrier, description, clientIdentifier, clients } = req.body;
+    if (!carrier) return res.status(400).json({ error: 'Carrier name is required' });
+    const created = sqliteDb.createCarrier({ carrier, description, clientIdentifier, clients });
+    res.status(201).json(created);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update carrier
+app.put('/api/carriers/:id', ensureUserSession, (req, res) => {
+  try {
+    const updated = sqliteDb.updateCarrier(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Carrier not found' });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete carrier
+app.delete('/api/carriers/:id', ensureUserSession, (req, res) => {
+  try {
+    sqliteDb.deleteCarrier(req.params.id);
+    res.json({ success: true, message: 'Carrier deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// CENSUS DATA IMPORT & CARRIER SPECS API
+// ==========================================
+
+// Get supported carrier formats and specifications
+app.get('/api/census/carriers', ensureUserSession, (req, res) => {
+  try {
+    res.json({ list: CARRIER_SPECIFICATIONS });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get imported census records
+app.get('/api/census/records', ensureUserSession, (req, res) => {
+  try {
+    const { carrier, search, limit } = req.query;
+    const records = sqliteDb.getAllCensusRecords({ carrier, search, limit });
+    res.json({ total: records.length, list: records });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import census files (supports single or multiple files e.g. ENROLLEMP.TXT, ENROLLBFT.TXT, ENROLLBNC.TXT)
+app.post('/api/census/import', ensureUserSession, upload.any(), async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ error: 'No census files uploaded.' });
+    }
+
+    const requestedCarrier = req.body.carrier || 'ManuLife';
+    console.log(`[BACKEND] Parsing ${files.length} census file(s) for carrier "${requestedCarrier}"...`);
+
+    const parsed = await parseCarrierCensus(files, requestedCarrier);
+    console.log(`[BACKEND] Census parsed: ${parsed.totalEmployees} employees, ${parsed.totalBenefits} benefits, ${parsed.totalDependents} dependents.`);
+
+    const saveRes = sqliteDb.saveCensusRecords(parsed.employees, parsed.carrier, parsed.policyNumber);
+    try {
+      db.saveCensusRecords(parsed.employees, parsed.carrier, parsed.policyNumber);
+    } catch (dbErr) {
+      console.warn('[BACKEND] Warning syncing to JSON db:', dbErr.message);
+    }
+    const totalContactsImported = (saveRes.insertedContacts || saveRes.insertedIndividuals || 0) + (saveRes.updatedContacts || saveRes.updatedIndividuals || 0);
+    const newContacts = saveRes.insertedContacts !== undefined ? saveRes.insertedContacts : saveRes.insertedIndividuals;
+    const updatedContacts = saveRes.updatedContacts !== undefined ? saveRes.updatedContacts : saveRes.updatedIndividuals;
+
+    console.log(`[BACKEND] Census saved to database: ${newContacts} new contacts, ${updatedContacts} updated contacts.`);
+
+    res.json({
+      success: true,
+      carrier: parsed.carrier,
+      policyNumber: parsed.policyNumber,
+      totalEmployees: parsed.totalEmployees,
+      totalBenefits: parsed.totalBenefits,
+      totalDependents: parsed.totalDependents,
+      importedContacts: totalContactsImported,
+      newContacts: newContacts,
+      updatedContacts: updatedContacts,
+      importedIndividuals: totalContactsImported,
+      newIndividuals: newContacts,
+      updatedIndividuals: updatedContacts,
+      matchedAccount: saveRes.matchedAccountName,
+      filesProcessed: parsed.filesProcessed,
+      employeesSample: parsed.employees.slice(0, 10),
+      errors: []
+    });
+  } catch (err) {
+    console.error('[BACKEND ERROR] Census import failed:', err.message);
+    res.status(400).json({ error: `Census import failed: ${err.message}` });
+  }
+});
+
+
 
 // Helper to create an account in SpiceCRM
 async function createAccount(accountData) {
@@ -1734,26 +2126,18 @@ app.post('/api/import', ensureUserSession, ensureAuthenticated, upload.single('f
         continue;
       }
 
-      // Capture all custom values to include in the description fallback
+      // Capture custom values
       const accountType = record['Account Type'] || '';
       const renewalDateBenefits = record['Renewal Date - Benefits'] || '';
       const carrierOrTpa = record['Carrier or TPA'] || '';
-      const originalDescription = record['Description'] || '';
-      
-      // Build a robust fallback description with all metadata from the CSV
-      const descriptionDetails = [
-        originalDescription,
-        accountType ? `[Account Type]: ${accountType}` : '',
-        renewalDateBenefits ? `[Renewal Date - Benefits]: ${renewalDateBenefits}` : '',
-        carrierOrTpa ? `[Carrier or TPA]: ${carrierOrTpa}` : ''
-      ].filter(Boolean).join(' | ');
+      const originalDescription = sqliteDb.cleanDescription(record['Description'] || '');
 
       const accountData = {
         name: name,
         email1: record['Email'] || '',
         website: record['Website'] || '',
         industry: record['Industry'] || '',
-        description: descriptionDetails,
+        description: originalDescription,
         shipping_address_street: record['Street (Shipping Address)'] || '',
         shipping_address_city: record['City (Shipping Address)'] || '',
         shipping_address_state: record['State (Shipping Address)'] || '',
@@ -1874,27 +2258,66 @@ app.get('/api/auth/outlook/callback', async (req, res) => {
 });
 
 // 3. Get connection status for a user
-app.get('/api/users/:id/outlook-status', ensureUserSession, ensureAuthenticated, async (req, res) => {
+app.get('/api/users/:id/outlook-status', ensureUserSession, async (req, res) => {
   const { id } = req.params;
   try {
+    if (sqliteDb.getBackendMode() === 'sqlite') {
+      const user = sqliteDb.getUserById(id);
+      if (!user) return res.json({ connected: false });
+      const description = user.description || '';
+      const connected = description.includes('[OUTLOOK_TOKENS]');
+      return res.json({ connected });
+    }
+
+    if (!sessionToken) {
+      try {
+        await authenticate();
+      } catch (authErr) {
+        return res.json({ connected: false });
+      }
+    }
+
     const userRes = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
       headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
     });
-    if (!userRes.ok) return res.status(userRes.status).json({ error: 'Failed to retrieve user' });
+    if (!userRes.ok) return res.json({ connected: false });
     const userData = await userRes.json();
     const description = userData.description || '';
     const connected = description.includes('[OUTLOOK_TOKENS]');
     res.json({ connected });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.json({ connected: false });
   }
 });
 
 // 4. Save/Delete connection tokens for a user
-app.post('/api/users/:id/outlook-tokens', ensureUserSession, ensureAuthenticated, async (req, res) => {
+app.post('/api/users/:id/outlook-tokens', ensureUserSession, async (req, res) => {
   const { id } = req.params;
   const { tokens } = req.body;
   try {
+    if (sqliteDb.getBackendMode() === 'sqlite') {
+      const user = sqliteDb.getUserById(id);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      let description = user.description || '';
+
+      if (tokens) {
+        const tokenString = `[OUTLOOK_TOKENS]: ${JSON.stringify(tokens)}`;
+        if (description.includes('[OUTLOOK_TOKENS]')) {
+          description = description.replace(/\[OUTLOOK_TOKENS\]:\s*(\{.*\}|null)/, tokenString);
+        } else {
+          description = (description + '\n\n' + tokenString).trim();
+        }
+      } else {
+        description = description.replace(/\[OUTLOOK_TOKENS\]:\s*(\{.*\}|null)/, '').trim();
+      }
+
+      sqliteDb.updateUser(id, { description });
+      return res.json({ success: true, description });
+    }
+
+    if (!sessionToken) {
+      await authenticate();
+    }
     const userRes = await fetch(`${spiceCrmUrl}/module/Users/${id}`, {
       headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
     });
@@ -1931,12 +2354,23 @@ app.post('/api/users/:id/outlook-tokens', ensureUserSession, ensureAuthenticated
 
 // Helper to get active access token, refreshing if expired
 async function getOutlookAccessToken(userId) {
-  const userRes = await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
-    headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
-  });
-  if (!userRes.ok) throw new Error('User not found in CRM');
-  const userData = await userRes.json();
-  const description = userData.description || '';
+  let description = '';
+  if (sqliteDb.getBackendMode() === 'sqlite') {
+    const user = sqliteDb.getUserById(userId);
+    if (!user) throw new Error('User not found in database');
+    description = user.description || '';
+  } else {
+    if (!sessionToken) {
+      await authenticate();
+    }
+    const userRes = await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
+      headers: { 'OAuth-Token': sessionToken, 'Accept': 'application/json' }
+    });
+    if (!userRes.ok) throw new Error('User not found in CRM');
+    const userData = await userRes.json();
+    description = userData.description || '';
+  }
+
   const match = description.match(/\[OUTLOOK_TOKENS\]:\s*(\{.*\})/);
   if (!match) return null;
 
@@ -1989,15 +2423,19 @@ async function getOutlookAccessToken(userId) {
     newDescription = (newDescription + '\n\n' + tokenString).trim();
   }
 
-  await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
-    method: 'POST',
-    headers: {
-      'OAuth-Token': sessionToken,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({ description: newDescription })
-  });
+  if (sqliteDb.getBackendMode() === 'sqlite') {
+    sqliteDb.updateUser(userId, { description: newDescription });
+  } else {
+    await fetch(`${spiceCrmUrl}/module/Users/${userId}`, {
+      method: 'POST',
+      headers: {
+        'OAuth-Token': sessionToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ description: newDescription })
+    });
+  }
 
   return newTokens.access_token;
 }
