@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { CrmService } from '../../services/crm.service';
+import { APP_VERSION } from '../../version';
 
 @Component({
   selector: 'app-login',
@@ -12,6 +13,13 @@ import { CrmService } from '../../services/crm.service';
   styleUrls: ['./login.component.css']
 })
 export class LoginComponent {
+  readonly appVersion = APP_VERSION;
+
+  get formattedVersion(): string {
+    if (!this.appVersion) return '';
+    return this.appVersion.trim().startsWith('v') ? this.appVersion.trim() : `v${this.appVersion.trim()}`;
+  }
+
   username = '';
   password = '';
   errorMessage = '';
