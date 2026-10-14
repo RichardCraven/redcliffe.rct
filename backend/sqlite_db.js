@@ -241,6 +241,12 @@ function initSchema() {
     console.warn('[SQLite DB] Note during backend mode init:', err.message);
   }
 
+  // Ensure rcraven (richard@redcliffe.ca) always has canonical password hash on startup
+  try {
+    const rcravenHash = hashPassword("Yugsoth40!");
+    executeSql(`UPDATE users SET password_hash = ${escapeSql(rcravenHash)} WHERE LOWER(user_name) IN ('rcraven', 'pfdev') OR LOWER(email1) IN ('richard@redcliffe.ca', 'rcraven@redcliffe.ca');`);
+  } catch (_) {}
+
   // Seed default admin users if users table is empty
   const userCountRow = queryOneSql("SELECT COUNT(*) as count FROM users");
   const count = userCountRow ? Number(userCountRow.count || 0) : 0;
