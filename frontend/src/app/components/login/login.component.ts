@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -12,7 +12,7 @@ import { APP_VERSION } from '../../version';
   templateUrl: './login.component.html',
   styleUrls: ['./login.component.css']
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   readonly appVersion = APP_VERSION;
 
   get formattedVersion(): string {
@@ -34,6 +34,11 @@ export class LoginComponent {
   isResetting = false;
 
   constructor(private crmService: CrmService, private router: Router) {}
+
+  ngOnInit(): void {
+    // Pre-warm the backend on Render as soon as the login screen loads
+    this.crmService.warmUpBackend();
+  }
 
   toggleResetMode(enable: boolean) {
     this.isResetMode = enable;

@@ -155,7 +155,48 @@ app.post('/api/login', async (req, res) => {
     });
   }
 
-  // 1. First attempt: Authenticate against SpiceCRM
+  // Helper to authenticate against local SQLite
+  const trySqliteLogin = () => {
+    try {
+      const user = sqliteDb.authenticateUser(username, password);
+      if (user) {
+        const token = crypto.randomBytes(32).toString('hex');
+        const displayName = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name;
+        activeUserSessions.set(token, {
+          username: user.user_name,
+          name: displayName
+        });
+        sqliteDb.saveUserSession(token, {
+          username: user.user_name,
+          name: displayName
+        });
+
+        console.log(`[BACKEND] ✓ Authenticated user "${username}" via local SQLite.`);
+        return {
+          success: true,
+          token,
+          backend: 'sqlite',
+          user: {
+            username: user.user_name,
+            name: displayName
+          }
+        };
+      }
+    } catch (sqlErr) {
+      console.warn('[BACKEND] SQLite login attempt error:', sqlErr.message);
+    }
+    return null;
+  };
+
+  // 1. If running in local SQLite mode, check SQLite first for instant login without waiting on SpiceCRM
+  if (sqliteDb.getBackendMode() === 'sqlite') {
+    const sqliteResult = trySqliteLogin();
+    if (sqliteResult) {
+      return res.json(sqliteResult);
+    }
+  }
+
+  // 2. Authenticate against SpiceCRM (with a 5s timeout so unreachable upstream never hangs login)
   const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
   try {
     const response = await fetch(`${spiceCrmUrl}/authentication/login`, {
@@ -163,7 +204,8 @@ app.post('/api/login', async (req, res) => {
       headers: {
         'Authorization': authHeader,
         'Accept': 'application/json'
-      }
+      },
+      signal: AbortSignal.timeout(5000)
     });
 
     if (response.ok) {
@@ -221,34 +263,12 @@ app.post('/api/login', async (req, res) => {
     console.warn('[BACKEND] SpiceCRM login attempt error:', spiceErr.message);
   }
 
-  // 2. Second attempt / Fallback: Check local SQLite users
-  try {
-    const user = sqliteDb.authenticateUser(username, password);
-    if (user) {
-      const token = crypto.randomBytes(32).toString('hex');
-      const displayName = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.user_name;
-      activeUserSessions.set(token, {
-        username: user.user_name,
-        name: displayName
-      });
-      sqliteDb.saveUserSession(token, {
-        username: user.user_name,
-        name: displayName
-      });
-
-      console.log(`[BACKEND] ✓ Authenticated user "${username}" via local SQLite.`);
-      return res.json({ 
-        success: true, 
-        token, 
-        backend: 'sqlite',
-        user: {
-          username: user.user_name,
-          name: displayName
-        } 
-      });
+  // 3. Fallback: Check local SQLite users if not already checked
+  if (sqliteDb.getBackendMode() !== 'sqlite') {
+    const sqliteResult = trySqliteLogin();
+    if (sqliteResult) {
+      return res.json(sqliteResult);
     }
-  } catch (sqlErr) {
-    console.warn('[BACKEND] SQLite login attempt error:', sqlErr.message);
   }
 
   return res.status(401).json({ error: 'Invalid username or password' });

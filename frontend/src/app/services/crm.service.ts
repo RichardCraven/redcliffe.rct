@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
-import { Observable, Subject, throwError } from 'rxjs';
-import { catchError } from 'rxjs/operators';
+import { Observable, Subject, throwError, timer } from 'rxjs';
+import { catchError, retry } from 'rxjs/operators';
 import { CensusImportResult, CarrierCensusFormatSpec, CensusEmployee } from '../models/census.model';
 export * from '../models/census.model';
 
@@ -176,8 +176,25 @@ export class CrmService {
     };
   }
 
+  warmUpBackend(): void {
+    this.http.get(`${this.apiUrl}/debug-env`).subscribe({
+      next: () => {},
+      error: () => {}
+    });
+  }
+
   login(username: string, password: string): Observable<{ success: boolean; token: string; user: { username: string; name: string; is_demo?: boolean } }> {
-    return this.http.post<{ success: boolean; token: string; user: { username: string; name: string; is_demo?: boolean } }>(`${this.apiUrl}/login`, { username, password });
+    return this.http.post<{ success: boolean; token: string; user: { username: string; name: string; is_demo?: boolean } }>(`${this.apiUrl}/login`, { username, password }).pipe(
+      retry({
+        count: 2,
+        delay: (err: HttpErrorResponse) => {
+          if (err.status === 502 || err.status === 503 || err.status === 504 || err.status === 0) {
+            return timer(1500);
+          }
+          return throwError(() => err);
+        }
+      })
+    );
   }
 
   logout(): Observable<{ success: boolean }> {
