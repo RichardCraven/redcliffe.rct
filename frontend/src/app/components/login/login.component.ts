@@ -22,6 +22,7 @@ export class LoginComponent implements OnInit {
 
   username = '';
   password = '';
+  showPassword = false;
   errorMessage = '';
   successMessage = '';
   isLoading = false;
@@ -31,6 +32,8 @@ export class LoginComponent implements OnInit {
   resetIdentifier = '';
   newPassword = '';
   confirmPassword = '';
+  showNewPassword = false;
+  showConfirmPassword = false;
   isResetting = false;
 
   constructor(private crmService: CrmService, private router: Router) {}
@@ -46,6 +49,9 @@ export class LoginComponent implements OnInit {
     this.successMessage = '';
     this.newPassword = '';
     this.confirmPassword = '';
+    this.showPassword = false;
+    this.showNewPassword = false;
+    this.showConfirmPassword = false;
     if (enable && this.username) {
       this.resetIdentifier = this.username;
     }
